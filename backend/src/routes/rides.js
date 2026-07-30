@@ -11,9 +11,9 @@ router.use(requireAuth);
 async function resolvePoint(id, tripId) {
   if (id === 'base') {
     const { data, error } = await supabase
-      .from('bases').select('*').eq('trip_id', tripId).eq('is_primary', true).single();
-    if (error || !data) throw new Error('Home base not set — add a hotel in Setup first');
-    return data;
+      .from('bases').select('*').eq('trip_id', tripId).eq('is_primary', true).limit(1);     
+    if (error || !data) throw new Error('Home base not set — add a hotel in Setup first');    
+    return data[0];
   }
   const { data, error } = await supabase.from('places').select('*').eq('id', id).single();
   if (error || !data) throw new Error(`Place not found: ${id}`);
@@ -55,13 +55,15 @@ router.post('/', async (req, res, next) => {
     if (error) throw error;
 
     // Revenue tracking
-    await supabase.from('affiliate_events').insert({
-      trip_id: req.params.tripId,
-      user_id: req.user.sub,
-      partner: provider,
-      place_id: toPlaceId === 'base' ? null : toPlaceId,
-      event_type: 'click',
-    }).catch(() => {}); // non-fatal if this fails
+    try {
+  await supabase.from('affiliate_events').insert({
+    trip_id: req.params.tripId,
+    user_id: req.user.sub,
+    partner: provider,
+    place_id: toPlaceId === 'base' ? null : toPlaceId,
+    event_type: 'click',
+  });
+} catch (_) {} // non-fatal if this fails
 
     // Always return deep_link at the top level so the frontend can open it directly
     res.status(201).json({ ...rideRow, deep_link: deepLink });
