@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Waypoint — Trip Planner</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="authmask" id="authMask">
+  <div class="authcard">
+    <h2 id="authTitle">Welcome to Waypoint</h2>
+    <div class="sub" id="authSub">Sign in to plan your trip.</div>
+    <input type="text" id="authName" placeholder="Your name" style="display:none;">
+    <input type="email" id="authEmail" placeholder="Email">
+    <input type="password" id="authPassword" placeholder="Password (min 8 characters)">
+    <div class="err" id="authErr"></div>
+    <button class="btn btn-gold btn-block" id="authSubmit">Sign in</button>
+    <div class="toggle">No account? <a id="authToggle">Create one</a></div>
+  </div>
+</div>
+
+<div class="app" id="app" style="display:none;">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="mark">W</div>
+      <div>
+        <h1>Waypoint</h1>
+        <div class="tag">Trip Routing &amp; Discovery</div>
+      </div>
+    </div>
+    <select class="tripSwitcher" id="tripSwitcher"></select>
+    <input class="tripname" id="tripNameInput" placeholder="Trip name">
+    <div class="spacer"></div>
+    <button class="btn btn-ghost btn-small" id="newTripBtn">+ New trip</button>
+    <button class="btn btn-ghost btn-small" id="joinBtn">Join shared trip</button>
+    <button class="btn btn-ghost" id="shareBtn">Share trip</button>
+    <button class="btn btn-gold" id="exportBtn">Export itinerary</button>
+    <button class="btn btn-ghost btn-small" id="logoutBtn">Log out</button>
+  </div>
+
+  <div class="body">
+    <aside class="panel">
+      <nav class="tabs">
+        <button class="tab active" data-tab="setup">Setup</button>
+        <button class="tab" data-tab="places">My Places</button>
+        <button class="tab" data-tab="celebrity">Celebrity Picks</button>
+        <button class="tab" data-tab="itinerary">Itinerary</button>
+        <button class="tab" data-tab="budget">Budget</button>
+        <button class="tab" data-tab="group">Group</button>
+      </nav>
+
+      <div class="tabcontent" id="tab-setup">
+        <div class="section-title">Trip basics</div>
+        <div class="section-sub">Set your destination and home base. Everything else routes from your hotel.</div>
+
+        <label>Destination city</label>
+        <input type="text" id="cityInput" placeholder="e.g. Amsterdam, Netherlands">
+
+        <div class="row2">
+          <div><label>Start date</label><input type="date" id="startDate"></div>
+          <div><label>End date</label><input type="date" id="endDate"></div>
+        </div>
+
+        <label>Hotel / home base address</label>
+        <input type="text" id="hotelInput" placeholder="Search address or hotel name">
+        <button class="btn btn-ghost btn-small" id="hotelSearchBtn" style="margin-top:8px;">Locate on map</button>
+        <div class="hint" id="hotelStatus">Not located yet — click "Locate on map".</div>
+
+        <div class="divider"></div>
+        <label>Pace</label>
+        <div class="pillrow" id="pacePills">
+          <button class="pill" data-pace="relaxed">Relaxed (3/day)</button>
+          <button class="pill active" data-pace="moderate">Moderate (5/day)</button>
+          <button class="pill" data-pace="packed">Packed (7/day)</button>
+        </div>
+
+        <label>Primary transport</label>
+        <div class="pillrow" id="modePills">
+          <button class="pill" data-mode="walking">Walking</button>
+          <button class="pill active" data-mode="driving">Uber / Car</button>
+          <button class="pill" data-mode="transit">Public transit</button>
+        </div>
+
+        <div class="divider"></div>
+        <div class="section-title" style="font-size:14px;">Emergency &amp; essentials</div>
+        <div class="row2">
+          <div><label>Local emergency #</label><input type="text" id="emergencyNum" placeholder="112"></div>
+          <div><label>Embassy / consulate</label><input type="text" id="embassyInfo" placeholder="Optional note"></div>
+        </div>
+        <button class="btn btn-ghost btn-small" id="saveSetupBtn" style="margin-top:14px;">Save trip settings</button>
+      </div>
+
+      <div class="tabcontent" id="tab-places" hidden>
+        <div class="section-title">Add a place</div>
+        <div class="section-sub">Museums, restaurants, festivals, bars — search and drop a pin.</div>
+
+        <label>Search</label>
+        <input type="text" id="placeSearch" placeholder="e.g. Rijksmuseum, or a restaurant name">
+        <div class="pillrow" id="categoryPills">
+          <button class="pill active" data-cat="landmark">Landmark</button>
+          <button class="pill" data-cat="museum">Museum</button>
+          <button class="pill" data-cat="restaurant">Restaurant</button>
+          <button class="pill" data-cat="bar">Bar/Nightlife</button>
+          <button class="pill" data-cat="festival">Festival/Event</button>
+          <button class="pill" data-cat="shopping">Shopping</button>
+        </div>
+        <div class="row2" style="margin-top:10px;">
+          <div><label>Visit length (min)</label><input type="number" id="placeDuration" value="60"></div>
+          <div><label>Est. cost (USD)</label><input type="number" id="placeCost" value="0"></div>
+        </div>
+        <label>Notes (hours, reservation link, why you want to go)</label>
+        <textarea id="placeNotes" placeholder="e.g. Book ahead on OpenTable, open until 22:00"></textarea>
+        <button class="btn btn-gold btn-block" id="addPlaceBtn" style="margin-top:12px;">Search &amp; add to map</button>
+        <div class="hint" id="placeSearchStatus"></div>
+
+        <div class="divider"></div>
+        <div class="section-title" style="font-size:14px;">Your places (<span id="placeCount">0</span>)</div>
+        <div id="placeList"><div class="empty">No places yet. Search above, or add a Celebrity Pick.</div></div>
+      </div>
+
+      <div class="tabcontent" id="tab-celebrity" hidden>
+        <div class="section-title">Celebrity favorite places</div>
+        <div class="section-sub">Editorially curated spots associated with well-known food &amp; travel personalities.</div>
+        <div id="celebList"></div>
+      </div>
+
+      <div class="tabcontent" id="tab-itinerary" hidden>
+        <div class="section-title">Routing plan</div>
+        <div class="section-sub">Builds the shortest path from your hotel through every place, then splits it across days based on your pace.</div>
+        <button class="btn btn-coral btn-block" id="optimizeBtn">Calculate route &amp; build plan</button>
+        <div class="hint" id="optimizeStatus"></div>
+        <div class="divider"></div>
+        <div id="itineraryOutput"><div class="empty">Add your hotel and at least one place, then calculate.</div></div>
+      </div>
+
+      <div class="tabcontent" id="tab-budget" hidden>
+        <div class="section-title">Trip budget</div>
+        <label>Total trip budget (USD)</label>
+        <input type="number" id="budgetCap" value="800">
+        <div class="budget-bar"><div class="fill" id="budgetFill" style="width:0%;"></div></div>
+        <div class="hint" id="budgetHint">$0 planned of $800</div>
+        <div class="divider"></div>
+        <div id="budgetList"></div>
+        <div class="budget-total" id="budgetTotalRow"><span>Total planned</span><span>$0</span></div>
+      </div>
+
+      <div class="tabcontent" id="tab-group" hidden>
+        <div class="section-title">Traveling with others</div>
+        <div class="section-sub">Share this trip's code with your group. Anyone who joins can see the map, add their own must-see spots, and request rides.</div>
+        <div class="divider"></div>
+        <div class="section-title" style="font-size:14px;">Share code</div>
+        <div id="shareCodeBox" class="hint">Not shared yet. Click "Share trip" above to generate a code.</div>
+        <div class="divider"></div>
+        <div class="section-title" style="font-size:14px;">In this trip</div>
+        <div id="memberList"></div>
+      </div>
+
+    </aside>
+
+    <main class="mapwrap">
+      <div id="map"></div>
+      <div class="map-toolbar">
+        <span class="stat" id="mapStatPlaces">0 places</span>
+        <span class="stat" id="mapStatDistance">— total distance</span>
+        <span class="stat" id="mapStatTime">— travel time</span>
+      </div>
+      <div class="compass" title="North">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" stroke="#13202B" stroke-width="1.2"/><path d="M12 3L14.5 12L12 21L9.5 12L12 3Z" fill="#E2654A"/></svg>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

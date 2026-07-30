@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: waypoint-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 4000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+      - key: OSRM_BASE_URL
+        value: https://router.project-osrm.org
+      - key: UBER_CLIENT_ID
+        sync: false
