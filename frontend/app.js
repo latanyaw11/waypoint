@@ -324,11 +324,12 @@ function renderItinerary(result, base) {
   document.getElementById('itineraryOutput').innerHTML = html || '<div class="empty">Nothing to show yet.</div>';
   document.querySelectorAll('.uberbtn[data-from]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      try {
-        const ride = await api(`/api/trips/${trip.id}/rides`, { method:'POST', body:{ fromPlaceId: btn.dataset.from, toPlaceId: btn.dataset.to, provider:'uber' } });
-        window.open(ride.deep_link, '_blank');
-      } catch (e) { alert('Could not start the ride request: ' + e.message); }
-    });
+  try {
+    const win = window.open('', '_blank');
+    const ride = await api(`/api/trips/${trip.id}/rides`, { method:'POST', body:{ fromPlaceId: btn.dataset.from, toPlaceId: btn.dataset.to, provider:'uber' } });
+    win.location.href = ride.deep_link;
+  } catch (e) { alert('Could not start the ride request: ' + e.message); }
+});
   });
 }
 
