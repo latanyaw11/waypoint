@@ -107,6 +107,12 @@ function fitAll() {
   (trip.places || []).forEach(p => pts.push([p.lat, p.lng]));
   if (pts.length) map.fitBounds(pts, { padding:[60,60] });
 }
+async function ensureBases() {
+  if (!trip.bases || !trip.bases.length) {
+    const fresh = await api(`/api/trips/${trip.id}`);
+    trip.bases = fresh.bases || [];
+  }
+}
 function primaryBase() { return (trip.bases || []).find(b => b.is_primary) || (trip.bases || [])[0] || null; }
 
 // ---------------- client-side geocoding / OSRM geometry (for the visual route line only) ----------------
@@ -272,6 +278,7 @@ async function loadCelebrityPicks() {
 // ---------------- itinerary / routing ----------------
 document.getElementById('optimizeBtn').addEventListener('click', async () => {
   const statusEl = document.getElementById('optimizeStatus');
+  await ensureBases();
   const base = primaryBase();
   if (!base) { statusEl.textContent = 'Set your hotel location in Setup first.'; return; }
   if (!trip.places || !trip.places.length) { statusEl.textContent = 'Add at least one place first.'; return; }
