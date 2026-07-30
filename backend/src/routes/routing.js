@@ -9,7 +9,7 @@ router.use(requireAuth);
 router.post('/calculate', async (req, res, next) => {
   try {
     const { data: trip } = await supabase.from('trips').select('*').eq('id', req.params.tripId).single();
-    const { data: base } = await supabase.from('bases').select('*').eq('trip_id', req.params.tripId).eq('is_primary', true).single();
+    const { data: bases } = await supabase.from('bases').select('*').eq('trip_id', req.params.tripId).eq('is_primary', true).limit(1); const base = bases?.[0] || null;
     const { data: places } = await supabase.from('places').select('*').eq('trip_id', req.params.tripId).eq('status', 'planned');
 
     if (!base) return res.status(400).json({ error: 'Set a hotel/home base before calculating a route' });
@@ -32,7 +32,7 @@ router.post('/calculate', async (req, res, next) => {
 router.get('/matrix', async (req, res, next) => {
   try {
     const { getMatrix } = require('../services/routingService');
-    const { data: base } = await supabase.from('bases').select('*').eq('trip_id', req.params.tripId).eq('is_primary', true).single();
+    const { data: bases } = await supabase.from('bases').select('*').eq('trip_id', req.params.tripId).eq('is_primary', true).limit(1); const base = bases?.[0] || null;
     const { data: places } = await supabase.from('places').select('*').eq('trip_id', req.params.tripId);
     const { data: trip } = await supabase.from('trips').select('transport_mode').eq('id', req.params.tripId).single();
     const result = await getMatrix([base, ...places], trip.transport_mode);
