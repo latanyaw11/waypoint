@@ -111,7 +111,6 @@ async function ensureBases() {
   const fresh = await api(`/api/trips/${trip.id}`);
   trip.bases = fresh.bases || [];
 }
-}
 function primaryBase() { return (trip.bases || []).find(b => b.is_primary) || (trip.bases || [])[0] || null; }
 
 // ---------------- client-side geocoding / OSRM geometry (for the visual route line only) ----------------
