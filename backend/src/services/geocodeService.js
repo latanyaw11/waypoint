@@ -1,13 +1,21 @@
 const axios = require('axios');
 
-/**
- * Geocoding service. Defaults to Nominatim (OpenStreetMap, free, rate-limited
- * to ~1 req/sec — fine for dev). For production scale, swap to Google
- * Geocoding API or Mapbox Geocoding for better accuracy, POI coverage, and
- * higher throughput. Keep the same function signature so callers don't change.
- */
-
 async function geocode(query) {
+  try {
+    const { data } = await axios.get('https://photon.komoot.io/api/', {
+      params: { q: query, limit: 1 },
+      timeout: 6000,
+    });
+    if (data.features && data.features.length > 0) {
+      const f = data.features[0];
+      const [lng, lat] = f.geometry.coordinates;
+      const p = f.properties;
+      const address = [p.name, p.street, p.city, p.country].filter(Boolean).join(', ');
+      return { lat, lng, address };
+    }
+  } catch (err) {
+    // fall through to Nominatim
+  }
   const { data } = await axios.get('https://nominatim.openstreetmap.org/search', {
     params: { q: query, format: 'json', limit: 1 },
     headers: { 'User-Agent': 'WaypointApp/1.0 (contact: support@waypoint.app)' },
