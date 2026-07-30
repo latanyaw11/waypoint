@@ -108,10 +108,9 @@ function fitAll() {
   if (pts.length) map.fitBounds(pts, { padding:[60,60] });
 }
 async function ensureBases() {
-  if (!trip.bases || !trip.bases.length) {
-    const fresh = await api(`/api/trips/${trip.id}`);
-    trip.bases = fresh.bases || [];
-  }
+  const fresh = await api(`/api/trips/${trip.id}`);
+  trip.bases = fresh.bases || [];
+}
 }
 function primaryBase() { return (trip.bases || []).find(b => b.is_primary) || (trip.bases || [])[0] || null; }
 
