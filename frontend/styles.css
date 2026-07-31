@@ -212,3 +212,14 @@ textarea{resize:vertical;min-height:50px;}
 .map-toolbar{background:rgba(255,255,255,0.92);backdrop-filter:blur(8px);border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,0.12);border:1px solid rgba(255,255,255,0.8);}
 .stat{font-size:11px;font-weight:600;color:var(--ink);padding:4px 8px;border-right:1px solid var(--line);}
 .stat:last-child{border-right:none;}
+
+/* ---- POI category filter toggles ---- */
+.poi-filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;}
+.poi-filter-label{font-size:11px;font-weight:600;color:var(--slate);text-transform:uppercase;letter-spacing:0.04em;width:100%;}
+.poi-cat-btn{padding:5px 10px;border-radius:20px;border:1.5px solid var(--line);background:var(--white);font-size:12px;font-weight:600;cursor:pointer;color:var(--slate);transition:all .18s;opacity:0.5;}
+.poi-cat-btn.active{opacity:1;border-color:var(--sky);color:var(--sky);background:var(--sky-soft);}
+.poi-cat-btn:hover{opacity:0.85;}
+
+/* ---- Delete trip button ---- */
+.btn-delete{background:none;border:1.5px solid #FCA5A5;color:#DC2626;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;width:100%;}
+.btn-delete:hover{background:#FEF2F2;border-color:#DC2626;}
