@@ -287,3 +287,10 @@ textarea{resize:vertical;min-height:50px;}
 .placecard.draggable .num{left:4px;}
 .placecard.dragging{opacity:0.4;border:2px dashed var(--coral);}
 .placecard.drag-over{border:2px solid var(--coral);background:var(--bg);}
+/* ---- Visited stops + back to hotel ---- */
+.stopcard.visited{opacity:0.55;border-color:var(--line);}
+.stopcard.visited h4{text-decoration:line-through;color:var(--slate);}
+.stop-header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;}
+.visit-btn{font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--line);background:var(--white);cursor:pointer;white-space:nowrap;transition:all .2s;}
+.visit-btn.done{background:var(--forest);color:#fff;border-color:var(--forest);}
+.back-to-hotel .stopcard{border:1px dashed var(--gold);}
