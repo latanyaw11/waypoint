@@ -479,13 +479,11 @@ function renderPlaces() {
   if (!trip.places || !trip.places.length) { list.innerHTML = '<div class="empty">No places yet. Search above, or add a Celebrity Pick.</div>'; return; }
 
   list.innerHTML = trip.places.map((p, i) => `
-    <div class="placecard draggable" draggable="true" data-idx="${i}" data-id="${p.id}">
-      <div class="drag-handle">⠿</div>
+    <div class="placecard" data-idx="${i}" data-id="${p.id}">
       <div class="num">${i+1}</div>
       <h4>${escapeHtml(p.name)}</h4>
       <div class="meta">${catTagHtml(p.category)} <span>${fmtMoney(p.estimated_cost_cents)} · ${p.visit_duration_min||60}min</span></div>
       ${p.notes ? `<div class="hint">${escapeHtml(p.notes)}</div>` : ''}
-      ${reservationBtnsHtml(p.name, trip.destination_city, p.category)}
       <div class="actions"><button class="iconbtn" data-remove="${p.id}">Remove</button></div>
     </div>`).join('');
 
@@ -708,24 +706,73 @@ function formatTime12(t) { if (!t) return ''; const [h,m] = t.split(':').map(Num
 
 const visitedStops = new Set();
 
+let itnDragSrc = null;
+
+async function moveStop(placeId, destDayIdx, destStopIdx, result, base) {
+  // Flatten all stops in order
+  const flat = result.days.flatMap(d => d.stops);
+  const srcIdx = flat.findIndex(s => s.id === placeId);
+  if (srcIdx === -1) return;
+
+  // Remove from current position
+  const [moved] = flat.splice(srcIdx, 1);
+
+  // Calculate flat index of destination
+  const paceMap = { relaxed: 3, moderate: 5, packed: 7 };
+  const ppd = paceMap[trip.pace] || 5;
+  const destFlatIdx = Math.min(destDayIdx * ppd + destStopIdx, flat.length);
+  flat.splice(destFlatIdx, 0, moved);
+
+  // Update trip.places to match new flat order
+  trip.places = flat.map(s => trip.places.find(p => p.id === s.id) || s);
+
+  // Save new order
+  try {
+    await api(`/api/trips/${trip.id}/places/reorder`, {
+      method: 'POST',
+      body: { order: trip.places.map((p, i) => ({ id: p.id, position: i + 1 })) }
+    });
+  } catch(e) { console.warn('Reorder save failed:', e.message); }
+
+  // Rebuild and re-render itinerary
+  const days = [];
+  let dayNum = 1, stops = [];
+  trip.places.forEach((p, i) => {
+    stops.push({ ...p, legDistanceM: null, legDurationS: null });
+    if (stops.length >= ppd || i === trip.places.length - 1) {
+      days.push({ day: dayNum++, stops });
+      stops = [];
+    }
+  });
+  const newResult = { days, totalDistanceM: 0, totalDurationS: 0, routeSource: 'custom' };
+  lastItinerary = newResult;
+  document.getElementById('mapStatDistance').textContent = `${trip.places.length} stops · ${days.length} day${days.length > 1 ? 's' : ''}`;
+  redrawMarkers();
+  renderItinerary(newResult, base);
+}
+
 function renderItinerary(result, base) {
   let html = '';
   let prevId = 'base';
   let lastStopId = 'base';
-  result.days.forEach(day => {
-    html += `<div class="daygroup"><div class="dayhead">Day ${day.day} <span class="badge">${day.stops.length} stop${day.stops.length>1?'s':''}</span></div>`;
+  result.days.forEach((day, dayIdx) => {
+    html += `<div class="daygroup" data-dayidx="${dayIdx}">
+      <div class="dayhead">Day ${day.day} <span class="badge">${day.stops.length} stop${day.stops.length>1?'s':''}</span>
+        <span class="drag-day-hint">hold ⠿ to rearrange</span>
+      </div>
+      <div class="day-drop-zone" data-dayidx="${dayIdx}" data-stopidx="0"></div>`;
     day.stops.forEach((stop, si) => {
       const distKm = stop.legDistanceM ? (stop.legDistanceM/1000).toFixed(1) : '—';
       const minutes = stop.legDurationS ? Math.round(stop.legDurationS/60) : '—';
       const visited = visitedStops.has(stop.id);
-      const timeDisplay = stop.scheduledTimeDisplay ? `<span class="stop-time">${stop.scheduledTimeDisplay}</span>` : '';
-      const conflictClass = stop.hasConflict ? 'conflict' : '';
       html += `<div class="legrow"><span>↳ ${distKm} km</span><span class="dots"></span><span>${minutes} min</span></div>`;
-      html += `<div class="stopcard ${visited ? 'visited' : ''} ${conflictClass}" style="margin-bottom:10px;" data-stopid="${stop.id}">
+      html += `<div class="stopcard itn-draggable ${visited ? 'visited' : ''}" style="margin-bottom:4px;" data-stopid="${stop.id}" data-dayidx="${dayIdx}" data-stopidx="${si}" draggable="true">
+        <div class="itn-drag-handle">⠿</div>
         <div class="stop-header">
           <div class="meta">${catTagHtml(stop.category)} <span>${stop.visit_duration_min||stop.visitDurationMin||60} min visit</span>${timeDisplay}</div>
           <button class="visit-btn ${visited ? 'done' : ''}" data-visit="${stop.id}" title="${visited ? 'Mark unvisited' : 'Mark as visited'}">${visited ? '✅ Visited' : '○ Mark visited'}</button>
           ${!visited ? `<button class="move-day-btn" data-moveid="${stop.id}" data-day="${day.day}">⏭ Next day</button>` : ''}
+          <button class="itn-remove-btn" data-removeid="${stop.id}">✕ Remove</button>
         </div>
         <h4>${escapeHtml(stop.name)}</h4>
         <div class="hint">${escapeHtml(stop.address||'')}</div>
@@ -734,6 +781,7 @@ function renderItinerary(result, base) {
       </div>`;
       prevId = stop.id;
       lastStopId = stop.id;
+      html += `<div class="day-drop-zone" data-dayidx="${dayIdx}" data-stopidx="${si+1}"></div>`;
     });
     html += `</div>`;
   });
@@ -750,6 +798,35 @@ function renderItinerary(result, base) {
   </div>`;
 
   document.getElementById('itineraryOutput').innerHTML = html || '<div class="empty">Nothing to show yet.</div>';
+
+  // ---- Itinerary drag-and-drop ----
+  document.querySelectorAll('.itn-draggable').forEach(card => {
+    card.addEventListener('dragstart', e => {
+      itnDragSrc = { dayIdx: parseInt(card.dataset.dayidx), stopIdx: parseInt(card.dataset.stopidx), id: card.dataset.stopid };
+      card.classList.add('itn-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => card.classList.remove('itn-dragging'));
+    card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('itn-drag-over'); });
+    card.addEventListener('dragleave', () => card.classList.remove('itn-drag-over'));
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      card.classList.remove('itn-drag-over');
+      if (!itnDragSrc || itnDragSrc.id === card.dataset.stopid) return;
+      moveStop(itnDragSrc.id, parseInt(card.dataset.dayidx), parseInt(card.dataset.stopidx), result, base);
+    });
+  });
+
+  document.querySelectorAll('.day-drop-zone').forEach(zone => {
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drop-zone-active'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drop-zone-active'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('drop-zone-active');
+      if (!itnDragSrc) return;
+      moveStop(itnDragSrc.id, parseInt(zone.dataset.dayidx), parseInt(zone.dataset.stopidx), result, base);
+    });
+  });
 
   // Visit toggle handlers
   document.querySelectorAll('.visit-btn').forEach(btn => {
@@ -805,6 +882,41 @@ function renderItinerary(result, base) {
       document.getElementById('mapStatDistance').textContent = `${trip.places.length} stops · ${numDays} day${numDays > 1 ? 's' : ''}`;
       redrawMarkers();
       renderItinerary(lastItinerary, primaryBase());
+    });
+  });
+
+  // Remove from itinerary handlers
+  document.querySelectorAll('.itn-remove-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const placeId = btn.dataset.removeid;
+      if (!confirm('Remove this place from your trip?')) return;
+      try {
+        await api(`/api/trips/${trip.id}/places/${placeId}`, { method: 'DELETE' });
+        trip.places = trip.places.filter(p => p.id !== placeId);
+        // Rebuild itinerary
+        const paceMap = { relaxed: 3, moderate: 5, packed: 7 };
+        const ppd = paceMap[trip.pace] || 5;
+        const days = [];
+        let dayNum = 1, stops = [];
+        trip.places.forEach((p, i) => {
+          stops.push({ ...p, legDistanceM: null, legDurationS: null });
+          if (stops.length >= ppd || i === trip.places.length - 1) {
+            days.push({ day: dayNum++, stops });
+            stops = [];
+          }
+        });
+        if (!days.length) {
+          document.getElementById('itineraryOutput').innerHTML = '<div class="empty">Add your hotel and at least one place, then calculate.</div>';
+          document.getElementById('mapStatDistance').textContent = '0 places';
+          return;
+        }
+        lastItinerary = { days, totalDistanceM: 0, totalDurationS: 0, routeSource: 'custom' };
+        document.getElementById('mapStatDistance').textContent = `${trip.places.length} stops · ${days.length} day${days.length > 1 ? 's' : ''}`;
+        redrawMarkers();
+        renderPlaces();
+        renderBudget();
+        renderItinerary(lastItinerary, primaryBase());
+      } catch(e) { alert('Could not remove place: ' + e.message); }
     });
   });
 
