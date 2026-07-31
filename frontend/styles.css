@@ -245,3 +245,18 @@ textarea{resize:vertical;min-height:50px;}
 /* ---- Move to next day button ---- */
 .move-day-btn{font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--sky);background:var(--sky-soft);color:var(--sky);cursor:pointer;white-space:nowrap;transition:all .2s;font-weight:600;}
 .move-day-btn:hover{background:var(--sky);color:#fff;}
+
+/* ---- Itinerary drag-and-drop ---- */
+.itn-draggable{cursor:default;position:relative;}
+.itn-drag-handle{position:absolute;left:6px;top:50%;transform:translateY(-50%);font-size:15px;color:var(--slate);cursor:grab;opacity:0.5;padding:4px;}
+.itn-drag-handle:hover{opacity:1;}
+.itn-draggable{padding-left:28px;}
+.itn-dragging{opacity:0.4;border:2px dashed var(--sky);}
+.itn-drag-over{border:2px solid var(--sky) !important;background:var(--sky-soft) !important;}
+.day-drop-zone{height:8px;border-radius:4px;margin:2px 0;transition:all .15s;}
+.day-drop-zone.drop-zone-active{height:24px;background:var(--sky-soft);border:2px dashed var(--sky);}
+.drag-day-hint{font-size:10px;color:var(--slate);font-weight:400;margin-left:8px;opacity:0.7;}
+
+/* ---- Itinerary remove button ---- */
+.itn-remove-btn{font-size:11px;padding:3px 8px;border-radius:20px;border:1px solid #FCA5A5;background:none;color:#DC2626;cursor:pointer;white-space:nowrap;transition:all .2s;font-weight:600;}
+.itn-remove-btn:hover{background:#FEE2E2;}
