@@ -485,3 +485,10 @@ textarea{resize:vertical;min-height:50px;}
 .chat-input-row{display:flex;gap:8px;}
 .chat-input{flex:1;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:var(--white);}
 .chat-input:focus{outline:none;border-color:var(--coral);}
+/* ---- Reservation buttons ---- */
+.reservation-btns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+.res-btn{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;text-decoration:none;transition:all .2s;cursor:pointer;}
+.opentable-btn{background:#DA3743;color:#fff;}
+.opentable-btn:hover{background:#b82e38;}
+.resy-btn{background:#e63f3f;color:#fff;}
+.resy-btn:hover{background:#c73535;}
