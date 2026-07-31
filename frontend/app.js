@@ -84,6 +84,18 @@ function initMap() {
 function numIcon(n) { return L.divIcon({ className:'', html:`<div class="num-pin"><span>${n}</span></div>`, iconSize:[26,26], iconAnchor:[13,26] }); }
 function hotelIcon() { return L.divIcon({ className:'', html:`<div class="hotel-pin">🏨</div>`, iconSize:[30,30], iconAnchor:[15,15] }); }
 
+function redrawMarkersInOrder() {
+  // Redraw markers using current trip.places order (for manual mode)
+  placeMarkers.forEach(m => map.removeLayer(m));
+  placeMarkers = [];
+  (trip.places || []).forEach((p, i) => {
+    if (!p.lat || !p.lng) return;
+    const icon = L.divIcon({ className:'place-icon', html:`<div class="pin-num">${i+1}</div>`, iconSize:[28,28], iconAnchor:[14,14] });
+    const m = L.marker([p.lat, p.lng], { icon }).addTo(map).bindPopup(`<b>${p.name}</b><br>${p.category||''}`);
+    placeMarkers.push(m);
+  });
+}
+
 function redrawMarkers() {
   placeMarkers.forEach(m => map.removeLayer(m));
   placeMarkers = [];
@@ -385,26 +397,57 @@ document.getElementById('optimizeBtn').addEventListener('click', async () => {
   } catch (e) { statusEl.textContent = e.message; }
 });
 
+const visitedStops = new Set();
+
 function renderItinerary(result, base) {
   let html = '';
   let prevId = 'base';
+  let lastStopId = 'base';
   result.days.forEach(day => {
     html += `<div class="daygroup"><div class="dayhead">Day ${day.day} <span class="badge">${day.stops.length} stop${day.stops.length>1?'s':''}</span></div>`;
-    day.stops.forEach(stop => {
-      const distKm = (stop.legDistanceM/1000).toFixed(1);
-      const minutes = Math.round(stop.legDurationS/60);
+    day.stops.forEach((stop, si) => {
+      const distKm = stop.legDistanceM ? (stop.legDistanceM/1000).toFixed(1) : '—';
+      const minutes = stop.legDurationS ? Math.round(stop.legDurationS/60) : '—';
+      const visited = visitedStops.has(stop.id);
       html += `<div class="legrow"><span>↳ ${distKm} km</span><span class="dots"></span><span>${minutes} min</span></div>`;
-      html += `<div class="stopcard" style="margin-bottom:10px;">
-        <div class="meta">${catTagHtml(stop.category)} <span>${stop.visitDurationMin||60} min visit</span></div>
+      html += `<div class="stopcard ${visited ? 'visited' : ''}" style="margin-bottom:10px;" data-stopid="${stop.id}">
+        <div class="stop-header">
+          <div class="meta">${catTagHtml(stop.category)} <span>${stop.visit_duration_min||stop.visitDurationMin||60} min visit</span></div>
+          <button class="visit-btn ${visited ? 'done' : ''}" data-visit="${stop.id}" title="${visited ? 'Mark unvisited' : 'Mark as visited'}">${visited ? '✅ Visited' : '○ Mark visited'}</button>
+        </div>
         <h4>${escapeHtml(stop.name)}</h4>
         <div class="hint">${escapeHtml(stop.address||'')}</div>
         <button class="uberbtn" data-from="${prevId}" data-to="${stop.id}">🚗 Request Uber here</button>
       </div>`;
       prevId = stop.id;
+      lastStopId = stop.id;
     });
     html += `</div>`;
   });
+
+  // Back to hotel button at the bottom
+  html += `<div class="back-to-hotel">
+    <div class="legrow"><span>↳ Return journey</span><span class="dots"></span><span>Home base</span></div>
+    <div class="stopcard" style="margin-bottom:10px;background:var(--parchment);">
+      <div class="meta"><span class="tag tag-land">🏨 Hotel</span></div>
+      <h4>${escapeHtml(base.name || 'Home Base')}</h4>
+      <div class="hint">${escapeHtml(base.address||'')}</div>
+      <button class="uberbtn" data-from="${lastStopId}" data-to="base">🚗 Ride back to hotel</button>
+    </div>
+  </div>`;
+
   document.getElementById('itineraryOutput').innerHTML = html || '<div class="empty">Nothing to show yet.</div>';
+
+  // Visit toggle handlers
+  document.querySelectorAll('.visit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sid = btn.dataset.visit;
+      if (visitedStops.has(sid)) { visitedStops.delete(sid); } else { visitedStops.add(sid); }
+      renderItinerary(lastItinerary, base);
+    });
+  });
+
+  // Uber button handlers
   document.querySelectorAll('.uberbtn[data-from]').forEach(btn => {
     btn.addEventListener('click', async () => {
       try {
