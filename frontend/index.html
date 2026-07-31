@@ -190,6 +190,7 @@
         <span class="stat" id="mapStatPlaces">0 places</span>
         <span class="stat" id="mapStatDistance">— total distance</span>
         <span class="stat" id="mapStatTime">— travel time</span>
+        <button class="stat poi-toggle" id="poiToggleBtn" onclick="window._poiVisible=!window._poiVisible;this.classList.toggle('active');poiMarkers.forEach(m=>window._poiVisible?m.addTo(map):map.removeLayer(m))">📍 Nearby places</button>
       </div>
       <div class="compass" title="North">
         <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" stroke="#13202B" stroke-width="1.2"/><path d="M12 3L14.5 12L12 21L9.5 12L12 3Z" fill="#E2654A"/></svg>
