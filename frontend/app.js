@@ -107,11 +107,12 @@ function fitAll() {
   (trip.places || []).forEach(p => pts.push([p.lat, p.lng]));
   if (pts.length) map.fitBounds(pts, { padding:[60,60] });
 }
+function primaryBase() { return (trip.bases || []).find(b => b.is_primary) || (trip.bases || [])[0] || null; }
+
 async function ensureBases() {
   const fresh = await api(`/api/trips/${trip.id}`);
   trip.bases = fresh.bases || [];
 }
-function primaryBase() { return (trip.bases || []).find(b => b.is_primary) || (trip.bases || [])[0] || null; }
 
 // ---------------- client-side geocoding / OSRM geometry (for the visual route line only) ----------------
 async function osrmRouteGeometry(points, profile) {
@@ -223,18 +224,37 @@ document.getElementById('addPlaceBtn').addEventListener('click', async () => {
   } catch (e) { statusEl.textContent = e.message; }
 });
 
+let manualOrder = false;
+let dragSrcIdx = null;
+
 function renderPlaces() {
   const list = document.getElementById('placeList');
   document.getElementById('placeCount').textContent = (trip.places || []).length;
   if (!trip.places || !trip.places.length) { list.innerHTML = '<div class="empty">No places yet. Search above, or add a Celebrity Pick.</div>'; return; }
-  list.innerHTML = trip.places.map((p, i) => `
-    <div class="placecard">
+
+  // Order toggle UI
+  const toggleHtml = `
+    <div class="order-toggle">
+      <span>Route order:</span>
+      <button class="toggle-btn ${!manualOrder ? 'active' : ''}" id="useOptimized">⚡ Optimized</button>
+      <button class="toggle-btn ${manualOrder ? 'active' : ''}" id="useManual">✋ My Order</button>
+    </div>`;
+
+  list.innerHTML = toggleHtml + trip.places.map((p, i) => `
+    <div class="placecard ${manualOrder ? 'draggable' : ''}" draggable="${manualOrder}" data-idx="${i}" data-id="${p.id}">
+      <div class="drag-handle ${manualOrder ? '' : 'hidden'}">⠿</div>
       <div class="num">${i+1}</div>
       <h4>${escapeHtml(p.name)}</h4>
       <div class="meta">${catTagHtml(p.category)} <span>${fmtMoney(p.estimated_cost_cents)} · ${p.visit_duration_min||60}min</span></div>
       ${p.notes ? `<div class="hint">${escapeHtml(p.notes)}</div>` : ''}
       <div class="actions"><button class="iconbtn" data-remove="${p.id}">Remove</button></div>
     </div>`).join('');
+
+  // Toggle handlers
+  document.getElementById('useOptimized').addEventListener('click', () => { manualOrder = false; renderPlaces(); redrawMarkers(); });
+  document.getElementById('useManual').addEventListener('click', () => { manualOrder = true; renderPlaces(); });
+
+  // Remove handlers
   list.querySelectorAll('[data-remove]').forEach(btn => {
     btn.addEventListener('click', async () => {
       await api(`/api/trips/${trip.id}/places/${btn.dataset.remove}`, { method:'DELETE' });
@@ -242,6 +262,38 @@ function renderPlaces() {
       renderPlaces(); redrawMarkers(); renderBudget();
     });
   });
+
+  // Drag-and-drop handlers
+  if (manualOrder) {
+    list.querySelectorAll('.placecard[draggable="true"]').forEach(card => {
+      card.addEventListener('dragstart', e => {
+        dragSrcIdx = parseInt(card.dataset.idx);
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      card.addEventListener('dragend', () => card.classList.remove('dragging'));
+      card.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; card.classList.add('drag-over'); });
+      card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+      card.addEventListener('drop', async e => {
+        e.preventDefault();
+        card.classList.remove('drag-over');
+        const destIdx = parseInt(card.dataset.idx);
+        if (dragSrcIdx === null || dragSrcIdx === destIdx) return;
+        // Reorder trip.places array
+        const moved = trip.places.splice(dragSrcIdx, 1)[0];
+        trip.places.splice(destIdx, 0, moved);
+        dragSrcIdx = null;
+        // Save new order to backend
+        try {
+          await api(`/api/trips/${trip.id}/places/reorder`, {
+            method: 'POST',
+            body: { order: trip.places.map((p, i) => ({ id: p.id, position: i + 1 })) }
+          });
+        } catch (e) { console.warn('Could not save order:', e.message); }
+        renderPlaces(); redrawMarkers();
+      });
+    });
+  }
 }
 
 // ---------------- celebrity tab ----------------
@@ -324,12 +376,12 @@ function renderItinerary(result, base) {
   document.getElementById('itineraryOutput').innerHTML = html || '<div class="empty">Nothing to show yet.</div>';
   document.querySelectorAll('.uberbtn[data-from]').forEach(btn => {
     btn.addEventListener('click', async () => {
-  try {
-    const win = window.open('', '_blank');
-    const ride = await api(`/api/trips/${trip.id}/rides`, { method:'POST', body:{ fromPlaceId: btn.dataset.from, toPlaceId: btn.dataset.to, provider:'uber' } });
-    win.location.href = ride.deep_link;
-  } catch (e) { alert('Could not start the ride request: ' + e.message); }
-});
+      try {
+        const win = window.open('', '_blank');
+        const ride = await api(`/api/trips/${trip.id}/rides`, { method:'POST', body:{ fromPlaceId: btn.dataset.from, toPlaceId: btn.dataset.to, provider:'uber' } });
+        win.location.href = ride.deep_link;
+      } catch (e) { alert('Could not start the ride request: ' + e.message); }
+    });
   });
 }
 
