@@ -84,6 +84,102 @@ function initMap() {
 function numIcon(n) { return L.divIcon({ className:'', html:`<div class="num-pin"><span>${n}</span></div>`, iconSize:[26,26], iconAnchor:[13,26] }); }
 function hotelIcon() { return L.divIcon({ className:'', html:`<div class="hotel-pin">🏨</div>`, iconSize:[30,30], iconAnchor:[15,15] }); }
 
+// ---------------- auto-populate POIs from Overpass ----------------
+let poiMarkers = [];
+let poiLayer = null;
+
+const POI_CATEGORIES = {
+  restaurant: { tags: [['amenity','restaurant'],['amenity','cafe'],['amenity','fast_food']], color:'#FF6B35', emoji:'🍽️' },
+  bar: { tags: [['amenity','bar'],['amenity','pub'],['amenity','nightclub']], color:'#7C3AED', emoji:'🍸' },
+  museum: { tags: [['tourism','museum'],['tourism','gallery'],['tourism','artwork']], color:'#2563EB', emoji:'🏛️' },
+  landmark: { tags: [['tourism','attraction'],['historic','monument'],['historic','memorial'],['tourism','viewpoint']], color:'#DC2626', emoji:'📍' },
+  shopping: { tags: [['shop','mall'],['shop','department_store'],['shop','boutique'],['amenity','marketplace']], color:'#DB2777', emoji:'🛍️' },
+};
+
+async function loadCityPOIs(lat, lng, radiusM = 3000) {
+  clearPOIMarkers();
+  const queries = Object.entries(POI_CATEGORIES).map(([cat, cfg]) => {
+    return cfg.tags.map(([k,v]) => `node["${k}"="${v}"](around:${radiusM},${lat},${lng});`).join('');
+  }).join('');
+
+  const overpassQuery = `[out:json][timeout:20];(${queries});out body;`;
+  try {
+    const res = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      body: 'data=' + encodeURIComponent(overpassQuery)
+    });
+    const data = await res.json();
+    renderPOIMarkers(data.elements || []);
+  } catch(e) { console.warn('POI load failed:', e.message); }
+}
+
+function getPOICategory(el) {
+  const tags = el.tags || {};
+  if (tags.amenity === 'restaurant' || tags.amenity === 'cafe' || tags.amenity === 'fast_food') return 'restaurant';
+  if (tags.amenity === 'bar' || tags.amenity === 'pub' || tags.amenity === 'nightclub') return 'bar';
+  if (tags.tourism === 'museum' || tags.tourism === 'gallery') return 'museum';
+  if (tags.tourism === 'attraction' || tags.historic) return 'landmark';
+  if (tags.shop) return 'shopping';
+  return 'landmark';
+}
+
+function renderPOIMarkers(elements) {
+  clearPOIMarkers();
+  const seen = new Set();
+  elements.forEach(el => {
+    if (!el.lat || !el.lon) return;
+    const name = el.tags?.name;
+    if (!name) return; // skip unnamed places
+    const key = `${name}|${Math.round(el.lat*100)}|${Math.round(el.lon*100)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    const cat = getPOICategory(el);
+    const cfg = POI_CATEGORIES[cat];
+    const icon = L.divIcon({
+      className: 'poi-icon',
+      html: `<div class="poi-pin" style="background:${cfg.color}" title="${name}">${cfg.emoji}</div>`,
+      iconSize: [30,30], iconAnchor: [15,15]
+    });
+
+    const marker = L.marker([el.lat, el.lon], { icon, opacity: 0.85 })
+      .bindPopup(`
+        <div style="min-width:180px;">
+          <strong>${name}</strong><br>
+          <span style="font-size:11px;color:#666;">${cat}</span><br>
+          <button onclick="addPOIToTrip('${name.replace(/'/g,"\'")}','${cat}',${el.lat},${el.lon})"
+            style="margin-top:6px;padding:4px 10px;background:#6366F1;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;width:100%;">
+            + Add to my trip
+          </button>
+        </div>
+      `)
+      .addTo(map);
+    poiMarkers.push(marker);
+  });
+  if (poiMarkers.length > 0) {
+    document.getElementById('poiToggleBtn') && (document.getElementById('poiToggleBtn').textContent = `📍 ${poiMarkers.length} nearby places`);
+  }
+}
+
+function clearPOIMarkers() {
+  poiMarkers.forEach(m => map.removeLayer(m));
+  poiMarkers = [];
+}
+
+async function addPOIToTrip(name, category, lat, lng) {
+  try {
+    const place = await api(`/api/trips/${trip.id}/places`, {
+      method: 'POST',
+      body: { query: `${name}, ${trip.destination_city || ''}`, name, category, visitDurationMin: 60, estimatedCostCents: 0 }
+    });
+    trip.places = [...(trip.places || []), place];
+    renderPlaces(); redrawMarkers(); renderBudget();
+    map.closePopup();
+    document.querySelector('.tab[data-tab="places"]').click();
+  } catch(e) { alert('Could not add place: ' + e.message); }
+}
+window.addPOIToTrip = addPOIToTrip; // expose for popup onclick
+
 function redrawMarkersInOrder() {
   // Redraw markers using current trip.places order (for manual mode)
   placeMarkers.forEach(m => map.removeLayer(m));
@@ -188,6 +284,11 @@ document.getElementById('saveSetupBtn').addEventListener('click', async () => {
   const updated = await api(`/api/trips/${trip.id}`, { method:'PATCH', body });
   Object.assign(trip, updated);
   populateTripSwitcher();
+  // Auto-load nearby POIs when destination is set
+  if (updated.destination_lat && updated.destination_lng) {
+    loadCityPOIs(updated.destination_lat, updated.destination_lng, 3000);
+    map.setView([updated.destination_lat, updated.destination_lng], 14);
+  }
 });
 
 document.getElementById('hotelSearchBtn').addEventListener('click', async () => {
@@ -807,6 +908,10 @@ function hydrateUIFromTrip() {
   document.getElementById('mapStatTime').textContent = '— travel time';
 
   renderPlaces(); redrawMarkers(); fitAll(); renderBudget(); renderMembers();
+  // Load POIs for this trip's destination
+  if (trip.destination_lat && trip.destination_lng) {
+    loadCityPOIs(trip.destination_lat, trip.destination_lng, 3000);
+  }
 }
 
 // ---------------- bootstrap ----------------
