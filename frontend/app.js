@@ -494,6 +494,12 @@ function renderPlaces() {
       <div class="meta">${catTagHtml(p.category)} <span>${fmtMoney(p.estimated_cost_cents)} · ${p.visit_duration_min||60}min</span></div>
       ${p.notes ? `<div class="hint">${escapeHtml(p.notes)}</div>` : ''}
       ${reservationBtnsHtml(p.name, trip.destination_city, p.category)}
+      <div class="time-row">
+        <label class="time-label">Day</label>
+        <input class="time-day-input" type="number" min="1" max="30" value="${p.scheduled_day || 1}" data-placeid="${p.id}" data-field="day">
+        <label class="time-label">Time</label>
+        <input class="time-input" type="time" value="${p.scheduled_time ? p.scheduled_time.slice(0,5) : ''}" data-placeid="${p.id}" data-field="time" placeholder="--:--">
+      </div>
       <div class="actions"><button class="iconbtn" data-remove="${p.id}">Remove</button></div>
     </div>`).join('');
 
@@ -512,6 +518,23 @@ function renderPlaces() {
       await api(`/api/trips/${trip.id}/places/${btn.dataset.remove}`, { method:'DELETE' });
       trip.places = trip.places.filter(p => p.id !== btn.dataset.remove);
       renderPlaces(); redrawMarkers(); renderBudget();
+    });
+  });
+
+  // Time/day pickers — save on change
+  list.querySelectorAll('.time-input, .time-day-input').forEach(input => {
+    input.addEventListener('change', async () => {
+      const placeId = input.dataset.placeid;
+      const field = input.dataset.field;
+      const place = trip.places.find(p => p.id === placeId);
+      if (!place) return;
+      if (field === 'time') {
+        place.scheduled_time = input.value || null;
+        await api(`/api/trips/${trip.id}/places/${placeId}`, { method:'PATCH', body:{ scheduled_time: input.value || null } });
+      } else if (field === 'day') {
+        place.scheduled_day = parseInt(input.value) || 1;
+        await api(`/api/trips/${trip.id}/places/${placeId}`, { method:'PATCH', body:{ scheduled_day: parseInt(input.value) || 1 } });
+      }
     });
   });
 
@@ -714,27 +737,93 @@ document.getElementById('optimizeBtn').addEventListener('click', async () => {
     return;
   }
 
-  statusEl.textContent = 'Calculating shortest route…';
+  // ⏰ TIME-BASED SCHEDULING (default when not in manual order)
+  statusEl.textContent = 'Building your day schedule…';
   try {
-    const result = await api(`/api/trips/${trip.id}/routing/calculate`, { method:'POST' });
-    lastItinerary = result;
-    document.getElementById('mapStatDistance').textContent = (result.totalDistanceM/1000).toFixed(1) + ' km total';
-    document.getElementById('mapStatTime').textContent = Math.round(result.totalDurationS/60) + ' min travel';
-
-    // refresh place list with persisted day/route_position for marker numbering
-    trip.places = await api(`/api/trips/${trip.id}/places`);
-    redrawMarkers();
-
+    const hasTimedPlaces = trip.places.some(p => p.scheduled_time);
     const profile = trip.transport_mode === 'walking' ? 'foot' : 'driving';
-    const flat = result.days.flatMap(d => d.stops);
-    const geomPoints = [{ lat: base.lat, lng: base.lng }, ...flat.map(s => ({ lat:s.lat, lng:s.lng }))];
-    const geom = await osrmRouteGeometry(geomPoints, profile);
-    drawRouteLine(geom);
 
-    renderItinerary(result, base);
-    statusEl.textContent = `Route calculated — ${flat.length} stops sequenced (${result.routeSource === 'osrm' ? 'live routing' : 'straight-line estimate'}).`;
-  } catch (e) { statusEl.textContent = e.message; }
+    if (hasTimedPlaces) {
+      // Sort by day then scheduled_time
+      const sorted = [...trip.places].sort((a, b) => {
+        const dayA = a.scheduled_day || 1, dayB = b.scheduled_day || 1;
+        if (dayA !== dayB) return dayA - dayB;
+        const tA = a.scheduled_time || '23:59', tB = b.scheduled_time || '23:59';
+        return tA.localeCompare(tB);
+      });
+
+      // Group by day
+      const dayMap = {};
+      sorted.forEach(p => {
+        const d = p.scheduled_day || 1;
+        if (!dayMap[d]) dayMap[d] = [];
+        dayMap[d].push(p);
+      });
+
+      const days = [];
+      let totalDurationS = 0;
+      const conflicts = [];
+      const allSorted = [];
+
+      for (const [dayNum, places] of Object.entries(dayMap)) {
+        const stops = [];
+        let prevLat = base.lat, prevLng = base.lng;
+        let prevEndTime = null;
+
+        for (const p of places) {
+          let legDurationS = null;
+          try {
+            const r = await fetch(`https://router.project-osrm.org/route/v1/${profile}/${prevLng},${prevLat};${p.lng},${p.lat}?overview=false`);
+            const d = await r.json();
+            if (d.code === 'Ok') legDurationS = d.routes[0].duration;
+          } catch(e) {}
+
+          // Check for timing conflicts
+          if (prevEndTime && p.scheduled_time && legDurationS) {
+            const gap = timeToMins(p.scheduled_time) - timeToMins(prevEndTime);
+            const travelMins = Math.ceil(legDurationS / 60);
+            if (travelMins > gap) conflicts.push({ name: p.name, shortfall: travelMins - gap });
+          }
+
+          const visitMins = p.visit_duration_min || 60;
+          prevEndTime = p.scheduled_time ? addMins(p.scheduled_time, visitMins) : null;
+          prevLat = p.lat; prevLng = p.lng;
+          if (legDurationS) totalDurationS += legDurationS;
+
+          const stop = { ...p, legDurationS, legDistanceM: null, scheduledTimeDisplay: p.scheduled_time ? formatTime12(p.scheduled_time) : null, hasConflict: conflicts.some(c => c.name === p.name) };
+          stops.push(stop);
+          allSorted.push(stop);
+        }
+        days.push({ day: parseInt(dayNum), stops });
+      }
+
+      const result = { days, totalDistanceM: 0, totalDurationS, routeSource: 'timed', conflicts };
+      lastItinerary = result;
+      const numDays = Object.keys(dayMap).length;
+      document.getElementById('mapStatDistance').textContent = `${trip.places.length} stops · ${numDays} day${numDays > 1 ? 's' : ''}`;
+      document.getElementById('mapStatTime').textContent = Math.round(totalDurationS/60) + ' min travel';
+      redrawMarkers();
+      const geom = await osrmRouteGeometry([{ lat: base.lat, lng: base.lng }, ...allSorted.map(p => ({ lat: p.lat, lng: p.lng }))], profile);
+      drawRouteLine(geom);
+      renderItinerary(result, base);
+
+      if (conflicts.length) {
+        statusEl.innerHTML = `⚠️ Schedule built — <span style="color:#DC2626;font-weight:700;">${conflicts.length} timing conflict${conflicts.length > 1 ? 's' : ''} detected</span>. Check highlighted stops.`;
+      } else {
+        statusEl.textContent = `✅ Schedule built — ${trip.places.length} stops across ${numDays} day${numDays > 1 ? 's' : ''}.`;
+      }
+
+    } else {
+      // No times set — prompt user to add times
+      statusEl.innerHTML = `💡 Add times to your places in <b>My Places</b> for a day schedule, or switch to <b>My Order</b> to set a custom sequence.`;
+    }
+  } catch(e) { statusEl.textContent = e.message; }
 });
+
+// ---- Time helpers ----
+function timeToMins(t) { if (!t) return 0; const [h,m] = t.split(':').map(Number); return h*60+m; }
+function addMins(t, mins) { let total = timeToMins(t) + mins; total = total % (24*60); return `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`; }
+function formatTime12(t) { if (!t) return ''; const [h,m] = t.split(':').map(Number); const ampm = h>=12?'PM':'AM'; return `${h%12||12}:${String(m).padStart(2,'0')} ${ampm}`; }
 
 const visitedStops = new Set();
 
@@ -748,12 +837,15 @@ function renderItinerary(result, base) {
       const distKm = stop.legDistanceM ? (stop.legDistanceM/1000).toFixed(1) : '—';
       const minutes = stop.legDurationS ? Math.round(stop.legDurationS/60) : '—';
       const visited = visitedStops.has(stop.id);
+      const timeDisplay = stop.scheduledTimeDisplay ? `<span class="stop-time">${stop.scheduledTimeDisplay}</span>` : '';
+      const conflictClass = stop.hasConflict ? 'conflict' : '';
       html += `<div class="legrow"><span>↳ ${distKm} km</span><span class="dots"></span><span>${minutes} min</span></div>`;
-      html += `<div class="stopcard ${visited ? 'visited' : ''}" style="margin-bottom:10px;" data-stopid="${stop.id}">
+      html += `<div class="stopcard ${visited ? 'visited' : ''} ${conflictClass}" style="margin-bottom:10px;" data-stopid="${stop.id}">
         <div class="stop-header">
-          <div class="meta">${catTagHtml(stop.category)} <span>${stop.visit_duration_min||stop.visitDurationMin||60} min visit</span></div>
+          <div class="meta">${catTagHtml(stop.category)} <span>${stop.visit_duration_min||stop.visitDurationMin||60} min visit</span>${timeDisplay}</div>
           <button class="visit-btn ${visited ? 'done' : ''}" data-visit="${stop.id}" title="${visited ? 'Mark unvisited' : 'Mark as visited'}">${visited ? '✅ Visited' : '○ Mark visited'}</button>
         </div>
+        ${stop.hasConflict ? `<div class="conflict-warning">⚠️ Not enough travel time — adjust your schedule</div>` : ''}
         <h4>${escapeHtml(stop.name)}</h4>
         <div class="hint">${escapeHtml(stop.address||'')}</div>
         ${reservationBtnsHtml(stop.name, trip.destination_city, stop.category)}
