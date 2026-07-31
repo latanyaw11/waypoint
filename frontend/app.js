@@ -151,6 +151,8 @@ document.querySelectorAll('.tab').forEach(btn => {
     document.querySelectorAll('.tabcontent').forEach(c => c.hidden = true);
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).hidden = false;
+    if (btn.dataset.tab === 'group') { startChat(); }
+    else { stopChat(); }
   });
 });
 
@@ -314,33 +316,132 @@ function renderPlaces() {
   }
 }
 
-// ---------------- celebrity tab ----------------
+// ---------------- influencer / celebrity guides tab ----------------
+let allGuides = [];
+let guideFilter = { person: '', city: '', category: '' };
+
 async function loadCelebrityPicks() {
+  const list = document.getElementById('celebList');
   try {
-    const picks = await api('/api/celebrity-picks');
-    const list = document.getElementById('celebList');
-    if (!picks.length) { list.innerHTML = '<div class="empty">No celebrity picks published yet — add some from the admin panel.</div>'; return; }
-    list.innerHTML = picks.map((c, i) => `
-      <div class="celeb-card">
-        <div class="who">${escapeHtml(c.celebrity_name)}</div>
-        <h4>${escapeHtml(c.place_name)}</h4>
-        <div class="city">${escapeHtml(c.city)} ${catTagHtml(c.category)}</div>
-        <p>${escapeHtml(c.note || '')}</p>
-        <button class="btn btn-gold btn-small" data-addceleb="${i}">Add to my places</button>
-      </div>`).join('');
-    list.querySelectorAll('[data-addceleb]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const c = picks[btn.dataset.addceleb];
+    allGuides = await api('/api/celebrity-picks');
+
+    // Auto-filter by destination city if trip has one
+    if (trip.destination_city && !guideFilter.city) {
+      const cityName = trip.destination_city.split(',')[0].trim();
+      guideFilter.city = cityName;
+    }
+
+    renderGuideFilters();
+    renderGuides();
+  } catch (e) {
+    list.innerHTML = `<div class="empty">${e.message}</div>`;
+  }
+}
+
+function renderGuideFilters() {
+  const list = document.getElementById('celebList');
+
+  // Build unique person and category lists
+  const people = [...new Set(allGuides.map(g => g.celebrity_name))].sort();
+  const categories = [...new Set(allGuides.map(g => g.category).filter(Boolean))].sort();
+
+  const filterHtml = `
+    <div class="guide-filters">
+      <input class="guide-search" id="guideCityFilter" type="text" placeholder="🌍 Filter by city..." value="${escapeHtml(guideFilter.city)}">
+      <select id="guidePersonFilter" class="guide-select">
+        <option value="">All guides</option>
+        ${people.map(p => `<option value="${escapeHtml(p)}" ${guideFilter.person === p ? 'selected' : ''}>${escapeHtml(p)}</option>`).join('')}
+      </select>
+      <select id="guideCatFilter" class="guide-select">
+        <option value="">All types</option>
+        ${categories.map(c => `<option value="${escapeHtml(c)}" ${guideFilter.category === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
+      </select>
+      <button class="iconbtn" id="guideClearBtn">Clear</button>
+    </div>
+    <div id="guideCards"></div>`;
+
+  list.innerHTML = filterHtml;
+
+  document.getElementById('guideCityFilter').addEventListener('input', e => { guideFilter.city = e.target.value; renderGuides(); });
+  document.getElementById('guidePersonFilter').addEventListener('change', e => { guideFilter.person = e.target.value; renderGuides(); });
+  document.getElementById('guideCatFilter').addEventListener('change', e => { guideFilter.category = e.target.value; renderGuides(); });
+  document.getElementById('guideClearBtn').addEventListener('click', () => {
+    guideFilter = { person: '', city: '', category: '' };
+    document.getElementById('guideCityFilter').value = '';
+    document.getElementById('guidePersonFilter').value = '';
+    document.getElementById('guideCatFilter').value = '';
+    renderGuides();
+  });
+}
+
+function renderGuides() {
+  const cards = document.getElementById('guideCards');
+  if (!cards) return;
+
+  let filtered = allGuides.filter(g => {
+    const cityMatch = !guideFilter.city || g.city.toLowerCase().includes(guideFilter.city.toLowerCase()) || (g.country && g.country.toLowerCase().includes(guideFilter.city.toLowerCase()));
+    const personMatch = !guideFilter.person || g.celebrity_name === guideFilter.person;
+    const catMatch = !guideFilter.category || g.category === guideFilter.category;
+    return cityMatch && personMatch && catMatch;
+  });
+
+  // Group by celebrity
+  const grouped = {};
+  filtered.forEach(g => {
+    if (!grouped[g.celebrity_name]) grouped[g.celebrity_name] = [];
+    grouped[g.celebrity_name].push(g);
+  });
+
+  if (!filtered.length) {
+    cards.innerHTML = '<div class="empty">No guides match your filters. Try a different city or clear filters.</div>';
+    return;
+  }
+
+  cards.innerHTML = Object.entries(grouped).map(([name, picks]) => `
+    <div class="influencer-section">
+      <div class="influencer-header">
+        <div class="influencer-avatar">${name.split(' ').map(w=>w[0]).join('').slice(0,2)}</div>
+        <div>
+          <div class="influencer-name">${escapeHtml(name)}</div>
+          <div class="influencer-count">${picks.length} pick${picks.length>1?'s':''}</div>
+        </div>
+      </div>
+      <div class="guide-pick-list">
+        ${picks.map((g, i) => `
+          <div class="guide-pick-card" data-gidx="${allGuides.indexOf(g)}">
+            <div class="guide-pick-top">
+              <div>
+                <div class="guide-pick-name">${escapeHtml(g.place_name)}</div>
+                <div class="guide-pick-meta">${escapeHtml(g.city)}, ${escapeHtml(g.country||'')} ${catTagHtml(g.category)}</div>
+              </div>
+              <button class="btn btn-gold btn-small add-guide-btn" data-gidx="${allGuides.indexOf(g)}">+ Add</button>
+            </div>
+            ${g.note ? `<p class="guide-pick-note">${escapeHtml(g.note)}</p>` : ''}
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
+
+  cards.querySelectorAll('.add-guide-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const g = allGuides[parseInt(btn.dataset.gidx)];
+      btn.textContent = '…';
+      btn.disabled = true;
+      try {
         const place = await api(`/api/trips/${trip.id}/places`, {
           method:'POST',
-          body: { query: `${c.place_name}, ${c.city}`, name: c.place_name, category: c.category || 'restaurant', notes: c.note, visitDurationMin: 75, estimatedCostCents: 2500, celebrityPickId: c.id }
+          body: { query: `${g.place_name}, ${g.city}, ${g.country||''}`, name: g.place_name, category: g.category || 'restaurant', notes: g.note, visitDurationMin: 75, estimatedCostCents: 0, celebrityPickId: g.id }
         });
         trip.places = [...(trip.places || []), place];
         renderPlaces(); redrawMarkers(); fitAll(); renderBudget();
-        document.querySelector('.tab[data-tab="places"]').click();
-      });
+        btn.textContent = '✅ Added';
+        btn.style.background = 'var(--forest)';
+      } catch(e) {
+        btn.textContent = '+ Add';
+        btn.disabled = false;
+        alert('Could not add place: ' + e.message);
+      }
     });
-  } catch (e) { document.getElementById('celebList').innerHTML = `<div class="empty">${e.message}</div>`; }
+  });
 }
 
 // ---------------- itinerary / routing ----------------
@@ -465,6 +566,81 @@ function renderItinerary(result, base) {
   });
 }
 
+// ---------------- group chat ----------------
+let chatPollInterval = null;
+let lastMessageTime = null;
+let currentUserId = null;
+
+function startChat() {
+  if (chatPollInterval) clearInterval(chatPollInterval);
+  loadMessages(true); // full load first
+  chatPollInterval = setInterval(() => loadMessages(false), 3000);
+}
+
+function stopChat() {
+  if (chatPollInterval) { clearInterval(chatPollInterval); chatPollInterval = null; }
+}
+
+async function loadMessages(fullLoad = false) {
+  try {
+    const url = fullLoad || !lastMessageTime
+      ? `/api/trips/${trip.id}/messages`
+      : `/api/trips/${trip.id}/messages?since=${encodeURIComponent(lastMessageTime)}`;
+    const msgs = await api(url);
+    if (!msgs.length && !fullLoad) return;
+
+    const box = document.getElementById('chatMessages');
+    if (!box) return;
+
+    if (fullLoad) {
+      box.innerHTML = msgs.length ? '' : '<div class="chat-empty">No messages yet. Say hello to your group! 👋</div>';
+    }
+
+    msgs.forEach(m => {
+      if (document.querySelector(`[data-msgid="${m.id}"]`)) return; // skip dupes
+      const isMine = m.user_id === currentUserId;
+      const time = new Date(m.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+      const div = document.createElement('div');
+      div.className = `chat-msg ${isMine ? 'mine' : 'theirs'}`;
+      div.dataset.msgid = m.id;
+      div.innerHTML = `
+        <div class="chat-avatar" style="background:${m.avatar_color}">${m.display_name.slice(0,1).toUpperCase()}</div>
+        <div class="chat-bubble">
+          ${!isMine ? `<div class="chat-name">${escapeHtml(m.display_name)}</div>` : ''}
+          <div class="chat-text">${escapeHtml(m.body)}</div>
+          <div class="chat-time">${time}</div>
+        </div>`;
+      box.appendChild(div);
+      lastMessageTime = m.created_at;
+    });
+
+    if (msgs.length || fullLoad) {
+      box.scrollTop = box.scrollHeight;
+    }
+  } catch(e) { console.warn('Chat error:', e.message); }
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const body = input.value.trim();
+  if (!body) return;
+  input.value = '';
+  input.disabled = true;
+  try {
+    await api(`/api/trips/${trip.id}/messages`, { method:'POST', body:{ body } });
+    await loadMessages(false);
+  } catch(e) { alert('Could not send message: ' + e.message); input.value = body; }
+  finally { input.disabled = false; input.focus(); }
+}
+
+// Chat send button
+document.addEventListener('click', e => {
+  if (e.target.id === 'chatSendBtn') sendMessage();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement.id === 'chatInput') sendMessage();
+});
+
 // ---------------- budget ----------------
 document.getElementById('budgetCap').addEventListener('change', async (e) => {
   const cents = Math.round((parseFloat(e.target.value) || 0) * 100);
@@ -582,6 +758,11 @@ async function boot() {
   authMask.style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   if (!map) initMap();
+  // Capture current user ID for chat
+  try {
+    const stored = localStorage.getItem('waypoint_user');
+    if (stored) { const u = JSON.parse(stored); currentUserId = u.id; }
+  } catch(e) {}
   loadCelebrityPicks();
   try {
     await loadTripsList();
