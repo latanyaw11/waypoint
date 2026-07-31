@@ -158,6 +158,4 @@ router.post('/reorder', requireAuth, async (req, res, next) => {
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
-
-module.exports = router;
 module.exports = router;
