@@ -332,6 +332,37 @@ document.getElementById('optimizeBtn').addEventListener('click', async () => {
   const base = primaryBase();
   if (!base) { statusEl.textContent = 'Set your hotel location in Setup first.'; return; }
   if (!trip.places || !trip.places.length) { statusEl.textContent = 'Add at least one place first.'; return; }
+
+  if (manualOrder) {
+    // Use the user's manual drag-and-drop order — no backend calculation
+    statusEl.textContent = 'Building itinerary in your order…';
+    try {
+      const pace = trip.pace || 5;
+      const days = [];
+      let dayNum = 1, stops = [];
+      trip.places.forEach((p, i) => {
+        stops.push({ ...p, legDistanceM: null, legDurationS: null });
+        if (stops.length >= pace || i === trip.places.length - 1) {
+          days.push({ day: dayNum++, stops });
+          stops = [];
+        }
+      });
+      const totalStops = trip.places.length;
+      const result = { days, totalDistanceM: 0, totalDurationS: 0, routeSource: 'manual' };
+      lastItinerary = result;
+      document.getElementById('mapStatDistance').textContent = `${totalStops} stops`;
+      document.getElementById('mapStatTime').textContent = 'Custom order';
+      redrawMarkers();
+      const profile = trip.transport_mode === 'walking' ? 'foot' : 'driving';
+      const geomPoints = [{ lat: base.lat, lng: base.lng }, ...trip.places.map(p => ({ lat: p.lat, lng: p.lng }))];
+      const geom = await osrmRouteGeometry(geomPoints, profile);
+      drawRouteLine(geom);
+      renderItinerary(result, base);
+      statusEl.textContent = `Custom order applied — ${totalStops} stops in your sequence.`;
+    } catch (e) { statusEl.textContent = e.message; }
+    return;
+  }
+
   statusEl.textContent = 'Calculating shortest route…';
   try {
     const result = await api(`/api/trips/${trip.id}/routing/calculate`, { method:'POST' });
