@@ -60,7 +60,10 @@
         <div class="section-sub">Set your destination and home base. Everything else routes from your hotel.</div>
 
         <label>Destination city</label>
-        <input type="text" id="cityInput" placeholder="e.g. Amsterdam, Netherlands">
+        <div class="autocomplete-wrap">
+          <input type="text" id="cityInput" placeholder="e.g. Amsterdam, Netherlands" autocomplete="off">
+          <div class="autocomplete-list" id="cityAutocomplete"></div>
+        </div>
 
         <div class="row2">
           <div><label>Start date</label><input type="date" id="startDate"></div>
@@ -68,7 +71,10 @@
         </div>
 
         <label>Hotel / home base address</label>
-        <input type="text" id="hotelInput" placeholder="Search address or hotel name">
+        <div class="autocomplete-wrap">
+          <input type="text" id="hotelInput" placeholder="Search address or hotel name" autocomplete="off">
+          <div class="autocomplete-list" id="hotelAutocomplete"></div>
+        </div>
         <button class="btn btn-ghost btn-small" id="hotelSearchBtn" style="margin-top:8px;">Locate on map</button>
         <div class="hint" id="hotelStatus">Not located yet — click "Locate on map".</div>
 
