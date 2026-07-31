@@ -76,7 +76,8 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
 
 // ---------------- Map ----------------
 function initMap() {
-  map = L.map('map', { zoomControl: true }).setView([52.3676, 4.9041], 13);
+  map = L.map('map', { zoomControl: false }).setView([52.3676, 4.9041], 13);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
@@ -87,6 +88,7 @@ function hotelIcon() { return L.divIcon({ className:'', html:`<div class="hotel-
 // ---------------- auto-populate POIs from Overpass ----------------
 let poiMarkers = [];
 let poiLayer = null;
+let poiCategoryFilters = { restaurant: true, bar: true, museum: true, landmark: true, shopping: true };
 
 const POI_CATEGORIES = {
   restaurant: { tags: [['amenity','restaurant'],['amenity','cafe'],['amenity','fast_food']], color:'#FF6B35', emoji:'🍽️' },
@@ -152,8 +154,9 @@ function renderPOIMarkers(elements) {
             + Add to my trip
           </button>
         </div>
-      `)
-      .addTo(map);
+      `);
+    marker._poiCat = cat;
+    if (poiCategoryFilters[cat]) marker.addTo(map);
     poiMarkers.push(marker);
   });
   if (poiMarkers.length > 0) {
@@ -165,6 +168,24 @@ function clearPOIMarkers() {
   poiMarkers.forEach(m => map.removeLayer(m));
   poiMarkers = [];
 }
+
+function togglePOICategory(cat) {
+  poiCategoryFilters[cat] = !poiCategoryFilters[cat];
+  poiMarkers.forEach(m => {
+    if (m._poiCat === cat) {
+      if (poiCategoryFilters[cat]) { m.addTo(map); }
+      else { map.removeLayer(m); }
+    }
+  });
+  // Update toggle button appearance
+  const btn = document.querySelector(`.poi-cat-btn[data-cat="${cat}"]`);
+  if (btn) btn.classList.toggle('active', poiCategoryFilters[cat]);
+  // Update count
+  const visible = poiMarkers.filter(m => poiCategoryFilters[m._poiCat]).length;
+  const toggleBtn = document.getElementById('poiToggleBtn');
+  if (toggleBtn) toggleBtn.textContent = `📍 ${visible} nearby`;
+}
+window.togglePOICategory = togglePOICategory;
 
 async function addPOIToTrip(name, category, lat, lng) {
   try {
@@ -289,6 +310,20 @@ document.getElementById('saveSetupBtn').addEventListener('click', async () => {
     loadCityPOIs(updated.destination_lat, updated.destination_lng, 3000);
     map.setView([updated.destination_lat, updated.destination_lng], 14);
   }
+});
+
+document.getElementById('deleteTripBtn').addEventListener('click', async () => {
+  if (!confirm(`Delete "${trip.name}"? This cannot be undone.`)) return;
+  try {
+    await api(`/api/trips/${trip.id}`, { method: 'DELETE' });
+    // Remove from local list and reload
+    myTrips = myTrips.filter(t => t.id !== trip.id);
+    if (myTrips.length) {
+      await loadTrip(myTrips[0].id);
+    } else {
+      await promptNewTrip();
+    }
+  } catch(e) { alert('Could not delete trip: ' + e.message); }
 });
 
 document.getElementById('hotelSearchBtn').addEventListener('click', async () => {
