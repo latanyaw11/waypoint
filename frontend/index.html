@@ -73,6 +73,20 @@
         <div class="hint" id="hotelStatus">Not located yet — click "Locate on map".</div>
 
         <div class="divider"></div>
+        <label>Party size</label>
+        <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;">
+          <select id="partySize" style="padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:var(--white);width:130px;">
+            <option value="1">1 person</option>
+            <option value="2" selected>2 people</option>
+            <option value="3">3 people</option>
+            <option value="4">4 people</option>
+            <option value="5">5 people</option>
+            <option value="6">6 people</option>
+            <option value="8">8 people</option>
+            <option value="10">10 people</option>
+          </select>
+          <span class="hint">Used for reservations</span>
+        </div>
         <label>Pace</label>
         <div class="pillrow" id="pacePills">
           <button class="pill" data-pace="relaxed">Relaxed (3/day)</button>
