@@ -326,7 +326,7 @@ async function loadCelebrityPicks() {
     allGuides = await api('/api/celebrity-picks');
 
     // Auto-filter by destination city if trip has one
-    if (trip.destination_city && !guideFilter.city) {
+    if (trip && trip.destination_city && !guideFilter.city) {
       const cityName = trip.destination_city.split(',')[0].trim();
       guideFilter.city = cityName;
     }
