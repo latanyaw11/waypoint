@@ -478,39 +478,19 @@ function renderPlaces() {
   document.getElementById('placeCount').textContent = (trip.places || []).length;
   if (!trip.places || !trip.places.length) { list.innerHTML = '<div class="empty">No places yet. Search above, or add a Celebrity Pick.</div>'; return; }
 
-  // Order toggle UI
-  const toggleHtml = `
-    <div class="order-toggle">
-      <span>Route order:</span>
-      <button class="toggle-btn ${!manualOrder ? 'active' : ''}" id="useOptimized">⚡ Optimized</button>
-      <button class="toggle-btn ${manualOrder ? 'active' : ''}" id="useManual">✋ My Order</button>
-    </div>`;
-
-  list.innerHTML = toggleHtml + trip.places.map((p, i) => `
-    <div class="placecard ${manualOrder ? 'draggable' : ''}" draggable="${manualOrder}" data-idx="${i}" data-id="${p.id}">
-      <div class="drag-handle ${manualOrder ? '' : 'hidden'}">⠿</div>
+  list.innerHTML = trip.places.map((p, i) => `
+    <div class="placecard draggable" draggable="true" data-idx="${i}" data-id="${p.id}">
+      <div class="drag-handle">⠿</div>
       <div class="num">${i+1}</div>
       <h4>${escapeHtml(p.name)}</h4>
       <div class="meta">${catTagHtml(p.category)} <span>${fmtMoney(p.estimated_cost_cents)} · ${p.visit_duration_min||60}min</span></div>
       ${p.notes ? `<div class="hint">${escapeHtml(p.notes)}</div>` : ''}
       ${reservationBtnsHtml(p.name, trip.destination_city, p.category)}
-      <div class="time-row">
-        <label class="time-label">Day</label>
-        <input class="time-day-input" type="number" min="1" max="30" value="${p.scheduled_day || 1}" data-placeid="${p.id}" data-field="day">
-        <label class="time-label">Time</label>
-        <input class="time-input" type="time" value="${p.scheduled_time ? p.scheduled_time.slice(0,5) : ''}" data-placeid="${p.id}" data-field="time" placeholder="--:--">
-      </div>
       <div class="actions"><button class="iconbtn" data-remove="${p.id}">Remove</button></div>
     </div>`).join('');
 
   // Toggle handlers
-  document.getElementById('useOptimized').addEventListener('click', async () => {
-    manualOrder = false;
-    // Re-fetch places in DB order (route_position from last optimization)
-    try { trip.places = await api(`/api/trips/${trip.id}/places`); } catch(e) {}
-    renderPlaces(); redrawMarkers();
-  });
-  document.getElementById('useManual').addEventListener('click', () => { manualOrder = true; renderPlaces(); });
+
 
   // Remove handlers
   list.querySelectorAll('[data-remove]').forEach(btn => {
@@ -521,25 +501,10 @@ function renderPlaces() {
     });
   });
 
-  // Time/day pickers — save on change
-  list.querySelectorAll('.time-input, .time-day-input').forEach(input => {
-    input.addEventListener('change', async () => {
-      const placeId = input.dataset.placeid;
-      const field = input.dataset.field;
-      const place = trip.places.find(p => p.id === placeId);
-      if (!place) return;
-      if (field === 'time') {
-        place.scheduled_time = input.value || null;
-        await api(`/api/trips/${trip.id}/places/${placeId}`, { method:'PATCH', body:{ scheduled_time: input.value || null } });
-      } else if (field === 'day') {
-        place.scheduled_day = parseInt(input.value) || 1;
-        await api(`/api/trips/${trip.id}/places/${placeId}`, { method:'PATCH', body:{ scheduled_day: parseInt(input.value) || 1 } });
-      }
-    });
-  });
+
 
   // Drag-and-drop handlers
-  if (manualOrder) {
+  if (true) { // always in custom order mode
     list.querySelectorAll('.placecard[draggable="true"]').forEach(card => {
       card.addEventListener('dragstart', e => {
         dragSrcIdx = parseInt(card.dataset.idx);
@@ -707,118 +672,32 @@ document.getElementById('optimizeBtn').addEventListener('click', async () => {
   if (!base) { statusEl.textContent = 'Set your hotel location in Setup first.'; return; }
   if (!trip.places || !trip.places.length) { statusEl.textContent = 'Add at least one place first.'; return; }
 
-  if (manualOrder) {
-    // Use the user's manual drag-and-drop order — no backend calculation
-    statusEl.textContent = 'Building itinerary in your order…';
-    try {
-      const pace = trip.pace || 5;
-      const days = [];
-      let dayNum = 1, stops = [];
-      trip.places.forEach((p, i) => {
-        stops.push({ ...p, legDistanceM: null, legDurationS: null });
-        if (stops.length >= pace || i === trip.places.length - 1) {
-          days.push({ day: dayNum++, stops });
-          stops = [];
-        }
-      });
-      const totalStops = trip.places.length;
-      const result = { days, totalDistanceM: 0, totalDurationS: 0, routeSource: 'manual' };
-      lastItinerary = result;
-      document.getElementById('mapStatDistance').textContent = `${totalStops} stops`;
-      document.getElementById('mapStatTime').textContent = 'Custom order';
-      redrawMarkers(); // uses manualOrder flag to number pins correctly
-      const profile = trip.transport_mode === 'walking' ? 'foot' : 'driving';
-      const geomPoints = [{ lat: base.lat, lng: base.lng }, ...trip.places.map(p => ({ lat: p.lat, lng: p.lng }))];
-      const geom = await osrmRouteGeometry(geomPoints, profile);
-      drawRouteLine(geom);
-      renderItinerary(result, base);
-      statusEl.textContent = `Custom order applied — ${totalStops} stops in your sequence.`;
-    } catch (e) { statusEl.textContent = e.message; }
-    return;
-  }
-
-  // ⏰ TIME-BASED SCHEDULING (default when not in manual order)
-  statusEl.textContent = 'Building your day schedule…';
+  statusEl.textContent = 'Building your trip plan…';
   try {
-    // Always re-fetch fresh data so latest day/time edits are included
-    trip.places = await api(`/api/trips/${trip.id}/places`);
-    const hasTimedPlaces = trip.places.some(p => p.scheduled_time);
+    const paceMap = { relaxed: 3, moderate: 5, packed: 7 };
+    const placesPerDay = paceMap[trip.pace] || 5;
+    const days = [];
+    let dayNum = 1, stops = [];
+
+    trip.places.forEach((p, i) => {
+      stops.push({ ...p, legDistanceM: null, legDurationS: null });
+      if (stops.length >= placesPerDay || i === trip.places.length - 1) {
+        days.push({ day: dayNum++, stops });
+        stops = [];
+      }
+    });
+
+    const numDays = days.length;
+    const result = { days, totalDistanceM: 0, totalDurationS: 0, routeSource: 'custom' };
+    lastItinerary = result;
+    document.getElementById('mapStatDistance').textContent = `${trip.places.length} stops · ${numDays} day${numDays > 1 ? 's' : ''}`;
+    document.getElementById('mapStatTime').textContent = `${placesPerDay} places/day`;
+    redrawMarkers();
     const profile = trip.transport_mode === 'walking' ? 'foot' : 'driving';
-
-    if (hasTimedPlaces) {
-      // Sort by day then scheduled_time
-      const sorted = [...trip.places].sort((a, b) => {
-        const dayA = a.scheduled_day || 1, dayB = b.scheduled_day || 1;
-        if (dayA !== dayB) return dayA - dayB;
-        const tA = a.scheduled_time || '23:59', tB = b.scheduled_time || '23:59';
-        return tA.localeCompare(tB);
-      });
-
-      // Group by day
-      const dayMap = {};
-      sorted.forEach(p => {
-        const d = p.scheduled_day || 1;
-        if (!dayMap[d]) dayMap[d] = [];
-        dayMap[d].push(p);
-      });
-
-      const days = [];
-      let totalDurationS = 0;
-      const conflicts = [];
-      const allSorted = [];
-
-      for (const [dayNum, places] of Object.entries(dayMap)) {
-        const stops = [];
-        let prevLat = base.lat, prevLng = base.lng;
-        let prevEndTime = null;
-
-        for (const p of places) {
-          let legDurationS = null;
-          try {
-            const r = await fetch(`https://router.project-osrm.org/route/v1/${profile}/${prevLng},${prevLat};${p.lng},${p.lat}?overview=false`);
-            const d = await r.json();
-            if (d.code === 'Ok') legDurationS = d.routes[0].duration;
-          } catch(e) {}
-
-          // Check for timing conflicts
-          if (prevEndTime && p.scheduled_time && legDurationS) {
-            const gap = timeToMins(p.scheduled_time) - timeToMins(prevEndTime);
-            const travelMins = Math.ceil(legDurationS / 60);
-            if (travelMins > gap) conflicts.push({ name: p.name, shortfall: travelMins - gap });
-          }
-
-          const visitMins = p.visit_duration_min || 60;
-          prevEndTime = p.scheduled_time ? addMins(p.scheduled_time, visitMins) : null;
-          prevLat = p.lat; prevLng = p.lng;
-          if (legDurationS) totalDurationS += legDurationS;
-
-          const stop = { ...p, legDurationS, legDistanceM: null, scheduledTimeDisplay: p.scheduled_time ? formatTime12(p.scheduled_time) : null, hasConflict: conflicts.some(c => c.name === p.name) };
-          stops.push(stop);
-          allSorted.push(stop);
-        }
-        days.push({ day: parseInt(dayNum), stops });
-      }
-
-      const result = { days, totalDistanceM: 0, totalDurationS, routeSource: 'timed', conflicts };
-      lastItinerary = result;
-      const numDays = Object.keys(dayMap).length;
-      document.getElementById('mapStatDistance').textContent = `${trip.places.length} stops · ${numDays} day${numDays > 1 ? 's' : ''}`;
-      document.getElementById('mapStatTime').textContent = Math.round(totalDurationS/60) + ' min travel';
-      redrawMarkers();
-      const geom = await osrmRouteGeometry([{ lat: base.lat, lng: base.lng }, ...allSorted.map(p => ({ lat: p.lat, lng: p.lng }))], profile);
-      drawRouteLine(geom);
-      renderItinerary(result, base);
-
-      if (conflicts.length) {
-        statusEl.innerHTML = `⚠️ Schedule built — <span style="color:#DC2626;font-weight:700;">${conflicts.length} timing conflict${conflicts.length > 1 ? 's' : ''} detected</span>. Check highlighted stops.`;
-      } else {
-        statusEl.textContent = `✅ Schedule built — ${trip.places.length} stops across ${numDays} day${numDays > 1 ? 's' : ''}.`;
-      }
-
-    } else {
-      // No times set — prompt user to add times
-      statusEl.innerHTML = `💡 Add times to your places in <b>My Places</b> for a day schedule, or switch to <b>My Order</b> to set a custom sequence.`;
-    }
+    const geom = await osrmRouteGeometry([{ lat: base.lat, lng: base.lng }, ...trip.places.map(p => ({ lat: p.lat, lng: p.lng }))], profile);
+    drawRouteLine(geom);
+    renderItinerary(result, base);
+    statusEl.textContent = `✅ Trip planned — ${trip.places.length} stops across ${numDays} day${numDays > 1 ? 's' : ''}.`;
   } catch(e) { statusEl.textContent = e.message; }
 });
 
@@ -846,8 +725,8 @@ function renderItinerary(result, base) {
         <div class="stop-header">
           <div class="meta">${catTagHtml(stop.category)} <span>${stop.visit_duration_min||stop.visitDurationMin||60} min visit</span>${timeDisplay}</div>
           <button class="visit-btn ${visited ? 'done' : ''}" data-visit="${stop.id}" title="${visited ? 'Mark unvisited' : 'Mark as visited'}">${visited ? '✅ Visited' : '○ Mark visited'}</button>
+          ${!visited ? `<button class="move-day-btn" data-moveid="${stop.id}" data-day="${day.day}">⏭ Next day</button>` : ''}
         </div>
-        ${stop.hasConflict ? `<div class="conflict-warning">⚠️ Not enough travel time — adjust your schedule</div>` : ''}
         <h4>${escapeHtml(stop.name)}</h4>
         <div class="hint">${escapeHtml(stop.address||'')}</div>
         ${reservationBtnsHtml(stop.name, trip.destination_city, stop.category)}
@@ -878,6 +757,54 @@ function renderItinerary(result, base) {
       const sid = btn.dataset.visit;
       if (visitedStops.has(sid)) { visitedStops.delete(sid); } else { visitedStops.add(sid); }
       renderItinerary(lastItinerary, base);
+    });
+  });
+
+  // Move to next day handlers
+  document.querySelectorAll('.move-day-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const placeId = btn.dataset.moveid;
+      const currentDay = parseInt(btn.dataset.day);
+
+      // Find current index in trip.places
+      const idx = trip.places.findIndex(p => p.id === placeId);
+      if (idx === -1) return;
+
+      // Calculate pace
+      const paceMap = { relaxed: 3, moderate: 5, packed: 7 };
+      const placesPerDay = paceMap[trip.pace] || 5;
+
+      // Find where next day starts in the flat array
+      const nextDayStartIdx = currentDay * placesPerDay;
+
+      // Remove from current position and insert at start of next day
+      const [moved] = trip.places.splice(idx, 1);
+      const insertAt = Math.min(nextDayStartIdx, trip.places.length);
+      trip.places.splice(insertAt, 0, moved);
+
+      // Save new order to backend
+      api(`/api/trips/${trip.id}/places/reorder`, {
+        method: 'POST',
+        body: { order: trip.places.map((p, i) => ({ id: p.id, position: i + 1 })) }
+      }).catch(e => console.warn('Could not save order:', e.message));
+
+      // Rebuild itinerary with new order
+      const paceMap2 = { relaxed: 3, moderate: 5, packed: 7 };
+      const ppd = paceMap2[trip.pace] || 5;
+      const days = [];
+      let dayNum = 1, stops = [];
+      trip.places.forEach((p, i) => {
+        stops.push({ ...p, legDistanceM: null, legDurationS: null });
+        if (stops.length >= ppd || i === trip.places.length - 1) {
+          days.push({ day: dayNum++, stops });
+          stops = [];
+        }
+      });
+      lastItinerary = { days, totalDistanceM: 0, totalDurationS: 0, routeSource: 'custom' };
+      const numDays = days.length;
+      document.getElementById('mapStatDistance').textContent = `${trip.places.length} stops · ${numDays} day${numDays > 1 ? 's' : ''}`;
+      redrawMarkers();
+      renderItinerary(lastItinerary, primaryBase());
     });
   });
 
