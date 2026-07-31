@@ -264,7 +264,12 @@ function renderPlaces() {
     </div>`).join('');
 
   // Toggle handlers
-  document.getElementById('useOptimized').addEventListener('click', () => { manualOrder = false; renderPlaces(); redrawMarkers(); });
+  document.getElementById('useOptimized').addEventListener('click', async () => {
+    manualOrder = false;
+    // Re-fetch places in DB order (route_position from last optimization)
+    try { trip.places = await api(`/api/trips/${trip.id}/places`); } catch(e) {}
+    renderPlaces(); redrawMarkers();
+  });
   document.getElementById('useManual').addEventListener('click', () => { manualOrder = true; renderPlaces(); });
 
   // Remove handlers
