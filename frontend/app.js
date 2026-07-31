@@ -100,7 +100,8 @@ function redrawMarkers() {
   placeMarkers.forEach(m => map.removeLayer(m));
   placeMarkers = [];
   (trip.places || []).forEach((p, i) => {
-    const order = (p.route_position) ? p.route_position : i + 1;
+    // In manual order mode, use array index; otherwise use route_position from DB
+    const order = manualOrder ? (i + 1) : ((p.route_position) ? p.route_position : i + 1);
     const m = L.marker([p.lat, p.lng], { icon: numIcon(order) }).addTo(map);
     m.bindPopup(`<b>${escapeHtml(p.name)}</b><br>${p.category}<br>${escapeHtml(p.address || '')}`);
     placeMarkers.push(m);
@@ -364,7 +365,7 @@ document.getElementById('optimizeBtn').addEventListener('click', async () => {
       lastItinerary = result;
       document.getElementById('mapStatDistance').textContent = `${totalStops} stops`;
       document.getElementById('mapStatTime').textContent = 'Custom order';
-      redrawMarkers();
+      redrawMarkers(); // uses manualOrder flag to number pins correctly
       const profile = trip.transport_mode === 'walking' ? 'foot' : 'driving';
       const geomPoints = [{ lat: base.lat, lng: base.lng }, ...trip.places.map(p => ({ lat: p.lat, lng: p.lng }))];
       const geom = await osrmRouteGeometry(geomPoints, profile);
