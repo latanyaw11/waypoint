@@ -12,6 +12,7 @@ const rideRoutes = require('./routes/rides');
 const celebrityRoutes = require('./routes/celebrity');
 const adminRoutes = require('./routes/admin');
 const shareRoutes = require('./routes/sharing');
+const messageRoutes = require('./routes/messages');
 
 const app = express();
 
@@ -48,6 +49,7 @@ app.use('/api/trips', tripRoutes);
 app.use('/api/trips/:tripId/places', placeRoutes);
 app.use('/api/trips/:tripId/routing', routeRoutes);
 app.use('/api/trips/:tripId/rides', rideRoutes);
+app.use('/api/trips/:tripId/messages', messageRoutes);
 app.use('/api/celebrity-picks', celebrityRoutes);
 app.use('/api/share', shareRoutes);
 app.use('/api/admin', adminRoutes);
