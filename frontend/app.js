@@ -273,6 +273,78 @@ document.querySelectorAll('.tab').forEach(btn => {
   });
 });
 
+// ---------------- autocomplete ----------------
+let acDebounceTimer = null;
+
+async function fetchSuggestions(query, type = 'all') {
+  if (!query || query.length < 2) return [];
+  try {
+    // For cities only, filter by type
+    const typeParam = type === 'city' ? '&layer=city&layer=district&layer=county' : '';
+    const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=6${typeParam}`);
+    const data = await res.json();
+    return (data.features || []).map(f => {
+      const p = f.properties;
+      const parts = [p.name, p.city || p.district, p.state, p.country].filter(Boolean);
+      const label = [...new Set(parts)].join(', ');
+      return { label, lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], name: p.name };
+    }).filter((s, i, arr) => arr.findIndex(x => x.label === s.label) === i); // dedupe
+  } catch(e) { return []; }
+}
+
+function setupAutocomplete(inputId, listId, onSelect, type = 'all') {
+  const input = document.getElementById(inputId);
+  const list = document.getElementById(listId);
+  if (!input || !list) return;
+
+  input.addEventListener('input', () => {
+    clearTimeout(acDebounceTimer);
+    const q = input.value.trim();
+    if (!q || q.length < 2) { list.innerHTML = ''; list.hidden = true; return; }
+    acDebounceTimer = setTimeout(async () => {
+      const suggestions = await fetchSuggestions(q, type);
+      if (!suggestions.length) { list.innerHTML = ''; list.hidden = true; return; }
+      list.innerHTML = suggestions.map((s, i) =>
+        `<div class="ac-item" data-idx="${i}">${s.label}</div>`
+      ).join('');
+      list.hidden = false;
+      list._suggestions = suggestions;
+      list.querySelectorAll('.ac-item').forEach(item => {
+        item.addEventListener('mousedown', e => {
+          e.preventDefault();
+          const s = list._suggestions[parseInt(item.dataset.idx)];
+          input.value = s.label;
+          list.innerHTML = ''; list.hidden = true;
+          onSelect(s);
+        });
+      });
+    }, 250);
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => { list.innerHTML = ''; list.hidden = true; }, 200);
+  });
+
+  input.addEventListener('keydown', e => {
+    const items = list.querySelectorAll('.ac-item');
+    const active = list.querySelector('.ac-item.focused');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = active ? active.nextElementSibling : items[0];
+      if (next) { active && active.classList.remove('focused'); next.classList.add('focused'); }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prev = active ? active.previousElementSibling : items[items.length - 1];
+      if (prev) { active && active.classList.remove('focused'); prev.classList.add('focused'); }
+    } else if (e.key === 'Enter' && active) {
+      e.preventDefault();
+      active.dispatchEvent(new MouseEvent('mousedown'));
+    } else if (e.key === 'Escape') {
+      list.innerHTML = ''; list.hidden = true;
+    }
+  });
+}
+
 // ---------------- setup tab ----------------
 document.querySelectorAll('#pacePills .pill').forEach(p => {
   p.addEventListener('click', async () => {
@@ -982,6 +1054,44 @@ async function boot() {
     const stored = localStorage.getItem('waypoint_user');
     if (stored) { const u = JSON.parse(stored); currentUserId = u.id; }
   } catch(e) {}
+
+  // City autocomplete — filter to cities/places
+  setupAutocomplete('cityInput', 'cityAutocomplete', async (s) => {
+    document.getElementById('cityInput').value = s.label;
+    // Auto-save destination and load POIs
+    if (trip) {
+      try {
+        const updated = await api(`/api/trips/${trip.id}`, {
+          method: 'PATCH',
+          body: { destination_city: s.label, destination_lat: s.lat, destination_lng: s.lng }
+        });
+        Object.assign(trip, updated);
+        map.setView([s.lat, s.lng], 13);
+        loadCityPOIs(s.lat, s.lng, 3000);
+      } catch(e) { console.warn('Could not save destination:', e.message); }
+    }
+  }, 'city');
+
+  // Hotel autocomplete — all place types
+  setupAutocomplete('hotelInput', 'hotelAutocomplete', async (s) => {
+    document.getElementById('hotelInput').value = s.label;
+    // Auto-trigger hotel locate with the selected address
+    const statusEl = document.getElementById('hotelStatus');
+    statusEl.textContent = 'Locating…';
+    try {
+      const base = await api(`/api/trips/${trip.id}/base`, {
+        method: 'POST',
+        body: { name: s.name || s.label, address: s.label, checkIn: document.getElementById('startDate').value || null, checkOut: document.getElementById('endDate').value || null }
+      });
+      trip.bases = [base, ...(trip.bases || []).filter(b => !b.is_primary)];
+      if (hotelMarker) map.removeLayer(hotelMarker);
+      hotelMarker = L.marker([base.lat, base.lng], { icon: hotelIcon() }).addTo(map)
+        .bindPopup('<b>🏨 ' + (s.name || s.label) + '</b><br>Home base');
+      map.setView([base.lat, base.lng], 15);
+      statusEl.textContent = 'Located: ' + base.address;
+    } catch(e) { statusEl.textContent = e.message; }
+  }, 'all');
+
   loadCelebrityPicks();
   try {
     await loadTripsList();
