@@ -769,7 +769,7 @@ function renderItinerary(result, base) {
       html += `<div class="stopcard itn-draggable ${visited ? 'visited' : ''}" style="margin-bottom:4px;" data-stopid="${stop.id}" data-dayidx="${dayIdx}" data-stopidx="${si}" draggable="true">
         <div class="itn-drag-handle">⠿</div>
         <div class="stop-header">
-          <div class="meta">${catTagHtml(stop.category)} <span>${stop.visit_duration_min||stop.visitDurationMin||60} min visit</span>${timeDisplay}</div>
+          <div class="meta">${catTagHtml(stop.category)} <span>${stop.visit_duration_min||stop.visitDurationMin||60} min visit</span></div>
           <button class="visit-btn ${visited ? 'done' : ''}" data-visit="${stop.id}" title="${visited ? 'Mark unvisited' : 'Mark as visited'}">${visited ? '✅ Visited' : '○ Mark visited'}</button>
           ${!visited ? `<button class="move-day-btn" data-moveid="${stop.id}" data-day="${day.day}">⏭ Next day</button>` : ''}
           <button class="itn-remove-btn" data-removeid="${stop.id}">✕ Remove</button>
