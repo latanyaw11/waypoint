@@ -772,7 +772,6 @@ function renderItinerary(result, base) {
           <div class="meta">${catTagHtml(stop.category)} <span>${stop.visit_duration_min||stop.visitDurationMin||60} min visit</span></div>
           <button class="visit-btn ${visited ? 'done' : ''}" data-visit="${stop.id}" title="${visited ? 'Mark unvisited' : 'Mark as visited'}">${visited ? '✅ Visited' : '○ Mark visited'}</button>
           ${!visited ? `<button class="move-day-btn" data-moveid="${stop.id}" data-day="${day.day}">⏭ Next day</button>` : ''}
-          <button class="itn-remove-btn" data-removeid="${stop.id}">✕ Remove</button>
         </div>
         <h4>${escapeHtml(stop.name)}</h4>
         <div class="hint">${escapeHtml(stop.address||'')}</div>
@@ -882,41 +881,6 @@ function renderItinerary(result, base) {
       document.getElementById('mapStatDistance').textContent = `${trip.places.length} stops · ${numDays} day${numDays > 1 ? 's' : ''}`;
       redrawMarkers();
       renderItinerary(lastItinerary, primaryBase());
-    });
-  });
-
-  // Remove from itinerary handlers
-  document.querySelectorAll('.itn-remove-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const placeId = btn.dataset.removeid;
-      if (!confirm('Remove this place from your trip?')) return;
-      try {
-        await api(`/api/trips/${trip.id}/places/${placeId}`, { method: 'DELETE' });
-        trip.places = trip.places.filter(p => p.id !== placeId);
-        // Rebuild itinerary
-        const paceMap = { relaxed: 3, moderate: 5, packed: 7 };
-        const ppd = paceMap[trip.pace] || 5;
-        const days = [];
-        let dayNum = 1, stops = [];
-        trip.places.forEach((p, i) => {
-          stops.push({ ...p, legDistanceM: null, legDurationS: null });
-          if (stops.length >= ppd || i === trip.places.length - 1) {
-            days.push({ day: dayNum++, stops });
-            stops = [];
-          }
-        });
-        if (!days.length) {
-          document.getElementById('itineraryOutput').innerHTML = '<div class="empty">Add your hotel and at least one place, then calculate.</div>';
-          document.getElementById('mapStatDistance').textContent = '0 places';
-          return;
-        }
-        lastItinerary = { days, totalDistanceM: 0, totalDurationS: 0, routeSource: 'custom' };
-        document.getElementById('mapStatDistance').textContent = `${trip.places.length} stops · ${days.length} day${days.length > 1 ? 's' : ''}`;
-        redrawMarkers();
-        renderPlaces();
-        renderBudget();
-        renderItinerary(lastItinerary, primaryBase());
-      } catch(e) { alert('Could not remove place: ' + e.message); }
     });
   });
 
