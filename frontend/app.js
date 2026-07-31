@@ -262,6 +262,7 @@ function renderPlaces() {
       <h4>${escapeHtml(p.name)}</h4>
       <div class="meta">${catTagHtml(p.category)} <span>${fmtMoney(p.estimated_cost_cents)} · ${p.visit_duration_min||60}min</span></div>
       ${p.notes ? `<div class="hint">${escapeHtml(p.notes)}</div>` : ''}
+      ${reservationBtnsHtml(p.name, trip.destination_city, p.category)}
       <div class="actions"><button class="iconbtn" data-remove="${p.id}">Remove</button></div>
     </div>`).join('');
 
@@ -524,6 +525,7 @@ function renderItinerary(result, base) {
         </div>
         <h4>${escapeHtml(stop.name)}</h4>
         <div class="hint">${escapeHtml(stop.address||'')}</div>
+        ${reservationBtnsHtml(stop.name, trip.destination_city, stop.category)}
         <button class="uberbtn" data-from="${prevId}" data-to="${stop.id}">🚗 Request Uber here</button>
       </div>`;
       prevId = stop.id;
@@ -633,7 +635,61 @@ async function sendMessage() {
   finally { input.disabled = false; input.focus(); }
 }
 
-// Chat send button
+// ---------------- reservations ----------------
+const RESY_CITY_CODES = {
+  'new york': 'nyc', 'nyc': 'nyc', 'manhattan': 'nyc', 'brooklyn': 'nyc',
+  'los angeles': 'la', 'la': 'la', 'hollywood': 'la', 'santa monica': 'la',
+  'chicago': 'chi', 'san francisco': 'sf', 'miami': 'mia', 'miami beach': 'mia',
+  'washington': 'dc', 'washington dc': 'dc', 'dc': 'dc',
+  'boston': 'bos', 'las vegas': 'lv', 'seattle': 'sea', 'atlanta': 'atl',
+  'houston': 'hou', 'dallas': 'dal', 'denver': 'den', 'portland': 'pdx',
+  'nashville': 'nas', 'austin': 'aus', 'philadelphia': 'phl', 'phoenix': 'phx',
+  'san diego': 'sd', 'minneapolis': 'msp', 'new orleans': 'nola',
+  'london': 'lon', 'paris': 'par', 'toronto': 'tor', 'montreal': 'mtl',
+  'amsterdam': 'ams', 'barcelona': 'bcn', 'rome': 'rom', 'tokyo': 'tok'
+};
+
+function resyCityCode(cityName) {
+  if (!cityName) return 'nyc';
+  const key = cityName.toLowerCase().split(',')[0].trim();
+  return RESY_CITY_CODES[key] || key.replace(/\s+/g, '-');
+}
+
+function reservationDate() {
+  // Use trip start date or today
+  if (trip && trip.start_date) return trip.start_date.slice(0, 10);
+  return new Date().toISOString().slice(0, 10);
+}
+
+function partySize() {
+  const el = document.getElementById('partySize');
+  return el ? parseInt(el.value) || 2 : 2;
+}
+
+function openTableUrl(placeName, cityName) {
+  const date = reservationDate();
+  const term = encodeURIComponent(`${placeName}${cityName ? ', ' + cityName : ''}`);
+  return `https://www.opentable.com/s/?term=${term}&covers=${partySize()}&dateTime=${date}T19%3A00`;
+}
+
+function resyUrl(placeName, cityName) {
+  const date = reservationDate();
+  const city = resyCityCode(cityName);
+  const query = encodeURIComponent(placeName);
+  return `https://resy.com/cities/${city}?query=${query}&date=${date}&seats=${partySize()}`;
+}
+
+function reservationBtnsHtml(placeName, cityName, category) {
+  const cats = ['restaurant', 'bar', 'bar/nightlife', 'other'];
+  if (!cats.includes((category || '').toLowerCase())) return '';
+  return `
+    <div class="reservation-btns">
+      <a class="res-btn opentable-btn" href="${openTableUrl(placeName, cityName)}" target="_blank" rel="noopener">📅 OpenTable</a>
+      <a class="res-btn resy-btn" href="${resyUrl(placeName, cityName)}" target="_blank" rel="noopener">📅 Resy</a>
+    </div>`;
+}
+
+// ---------------- Chat send button
 document.addEventListener('click', e => {
   if (e.target.id === 'chatSendBtn') sendMessage();
 });
