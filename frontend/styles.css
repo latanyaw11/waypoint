@@ -231,3 +231,13 @@ textarea{resize:vertical;min-height:50px;}
 .ac-item{padding:10px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--line);color:var(--ink);transition:background .12s;}
 .ac-item:last-child{border-bottom:none;}
 .ac-item:hover,.ac-item.focused{background:var(--sky-soft);color:var(--sky);}
+
+/* ---- Time-based scheduling ---- */
+.time-row{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;}
+.time-label{font-size:11px;font-weight:600;color:var(--slate);text-transform:uppercase;letter-spacing:0.04em;margin:0;}
+.time-input{width:110px;padding:5px 8px;border:1px solid var(--line);border-radius:7px;font-size:13px;}
+.time-day-input{width:55px;padding:5px 8px;border:1px solid var(--line);border-radius:7px;font-size:13px;}
+.time-input:focus,.time-day-input:focus{outline:none;border-color:var(--sky);}
+.stop-time{background:var(--sky-soft);color:var(--sky);font-size:11px;font-weight:700;padding:2px 7px;border-radius:5px;margin-left:4px;}
+.stopcard.conflict{border-left-color:#DC2626;background:#FFF5F5;}
+.conflict-warning{font-size:11.5px;color:#DC2626;font-weight:600;margin-bottom:6px;padding:4px 8px;background:#FEE2E2;border-radius:5px;}
