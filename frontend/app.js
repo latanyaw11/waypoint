@@ -484,6 +484,12 @@ function renderPlaces() {
       <h4>${escapeHtml(p.name)}</h4>
       <div class="meta">${catTagHtml(p.category)} <span>${fmtMoney(p.estimated_cost_cents)} · ${p.visit_duration_min||60}min</span></div>
       ${p.notes ? `<div class="hint">${escapeHtml(p.notes)}</div>` : ''}
+      <div class="day-picker-row">
+        <span class="day-picker-label">📅 Day</span>
+        <select class="day-picker" data-placeid="${p.id}">
+          ${Array.from({length: tripDuration()}, (_, i) => `<option value="${i+1}" ${(p.scheduled_day||1)===(i+1)?'selected':''}>${i+1}</option>`).join('')}
+        </select>
+      </div>
       <div class="actions"><button class="iconbtn" data-remove="${p.id}">Remove</button></div>
     </div>`).join('');
 
@@ -491,6 +497,19 @@ function renderPlaces() {
 
 
   // Remove handlers
+  // Day picker handlers
+  list.querySelectorAll('.day-picker').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const placeId = sel.dataset.placeid;
+      const day = parseInt(sel.value);
+      const place = trip.places.find(p => p.id === placeId);
+      if (place) place.scheduled_day = day;
+      try {
+        await api(`/api/trips/${trip.id}/places/${placeId}`, { method:'PATCH', body:{ scheduled_day: day } });
+      } catch(e) { console.warn('Could not save day:', e.message); }
+    });
+  });
+
   list.querySelectorAll('[data-remove]').forEach(btn => {
     btn.addEventListener('click', async () => {
       await api(`/api/trips/${trip.id}/places/${btn.dataset.remove}`, { method:'DELETE' });
@@ -676,43 +695,49 @@ document.getElementById('optimizeBtn').addEventListener('click', async () => {
     const placesPerDay = paceMap[trip.pace] || 5;
     const profile = trip.transport_mode === 'walking' ? 'foot' : 'driving';
 
-    // Calculate real leg distances/times — each day starts fresh from hotel
+    // Group places by assigned day
     statusEl.textContent = 'Calculating travel times between stops…';
+
+    // Sort places by scheduled_day then their array order
+    const sorted = [...trip.places].sort((a, b) => (a.scheduled_day||1) - (b.scheduled_day||1));
+
+    // Group by day
+    const dayMap = {};
+    sorted.forEach(p => {
+      const d = p.scheduled_day || 1;
+      if (!dayMap[d]) dayMap[d] = [];
+      dayMap[d].push(p);
+    });
+
+    // Calculate legs per day — each day starts and ends at hotel
     const days = [];
-    let dayNum = 1, stops = [], totalDistanceM = 0, totalDurationS = 0;
-    let isFirstOfDay = true;
-    let prevPoint = { lat: base.lat, lng: base.lng }; // start at hotel
+    let totalDistanceM = 0, totalDurationS = 0;
+    const allPoints = [{ lat: base.lat, lng: base.lng }];
 
-    for (let i = 0; i < trip.places.length; i++) {
-      const p = trip.places[i];
+    for (const [dayNum, places] of Object.entries(dayMap)) {
+      const stops = [];
+      let prevPoint = { lat: base.lat, lng: base.lng };
 
-      // Calculate leg from prevPoint to this stop
-      let legDistanceM = null, legDurationS = null;
-      try {
-        const r = await fetch(`https://router.project-osrm.org/route/v1/${profile}/${prevPoint.lng},${prevPoint.lat};${p.lng},${p.lat}?overview=false`);
-        const d = await r.json();
-        if (d.code === 'Ok') {
-          legDistanceM = d.routes[0].distance;
-          legDurationS = d.routes[0].duration;
-        }
-      } catch(e) {}
+      for (const p of places) {
+        let legDistanceM = null, legDurationS = null;
+        try {
+          const r = await fetch(`https://router.project-osrm.org/route/v1/${profile}/${prevPoint.lng},${prevPoint.lat};${p.lng},${p.lat}?overview=false`);
+          const d = await r.json();
+          if (d.code === 'Ok') {
+            legDistanceM = d.routes[0].distance;
+            legDurationS = d.routes[0].duration;
+          }
+        } catch(e) {}
 
-      if (legDistanceM) totalDistanceM += legDistanceM;
-      if (legDurationS) totalDurationS += legDurationS;
+        if (legDistanceM) totalDistanceM += legDistanceM;
+        if (legDurationS) totalDurationS += legDurationS;
 
-      stops.push({ ...p, legDistanceM, legDurationS });
-      prevPoint = { lat: p.lat, lng: p.lng };
-
-      // End of day or last place
-      if (stops.length >= placesPerDay || i === trip.places.length - 1) {
-        days.push({ day: dayNum++, stops });
-        stops = [];
-        prevPoint = { lat: base.lat, lng: base.lng }; // reset to hotel for next day
+        stops.push({ ...p, legDistanceM, legDurationS });
+        allPoints.push({ lat: p.lat, lng: p.lng });
+        prevPoint = { lat: p.lat, lng: p.lng };
       }
+      days.push({ day: parseInt(dayNum), stops });
     }
-
-    // Build allPoints for route line (hotel → all places in order)
-    const allPoints = [{ lat: base.lat, lng: base.lng }, ...trip.places.map(p => ({ lat: p.lat, lng: p.lng }))];
 
     const numDays = days.length;
     const result = { days, totalDistanceM, totalDurationS, routeSource: 'custom' };
