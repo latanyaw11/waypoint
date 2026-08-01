@@ -674,11 +674,30 @@ document.getElementById('optimizeBtn').addEventListener('click', async () => {
   try {
     const paceMap = { relaxed: 3, moderate: 5, packed: 7 };
     const placesPerDay = paceMap[trip.pace] || 5;
-    const days = [];
-    let dayNum = 1, stops = [];
+    const profile = trip.transport_mode === 'walking' ? 'foot' : 'driving';
 
+    // Calculate real leg distances/times between consecutive stops
+    statusEl.textContent = 'Calculating travel times between stops…';
+    const allPoints = [{ lat: base.lat, lng: base.lng }, ...trip.places.map(p => ({ lat: p.lat, lng: p.lng }))];
+    const legData = [];
+    for (let i = 0; i < allPoints.length - 1; i++) {
+      try {
+        const r = await fetch(`https://router.project-osrm.org/route/v1/${profile}/${allPoints[i].lng},${allPoints[i].lat};${allPoints[i+1].lng},${allPoints[i+1].lat}?overview=false`);
+        const d = await r.json();
+        if (d.code === 'Ok') {
+          legData.push({ distanceM: d.routes[0].distance, durationS: d.routes[0].duration });
+        } else { legData.push({ distanceM: null, durationS: null }); }
+      } catch(e) { legData.push({ distanceM: null, durationS: null }); }
+    }
+
+    // Build days with real leg data attached to each stop
+    const days = [];
+    let dayNum = 1, stops = [], legIdx = 0, totalDistanceM = 0, totalDurationS = 0;
     trip.places.forEach((p, i) => {
-      stops.push({ ...p, legDistanceM: null, legDurationS: null });
+      const leg = legData[legIdx++] || { distanceM: null, durationS: null };
+      if (leg.distanceM) totalDistanceM += leg.distanceM;
+      if (leg.durationS) totalDurationS += leg.durationS;
+      stops.push({ ...p, legDistanceM: leg.distanceM, legDurationS: leg.durationS });
       if (stops.length >= placesPerDay || i === trip.places.length - 1) {
         days.push({ day: dayNum++, stops });
         stops = [];
@@ -686,13 +705,12 @@ document.getElementById('optimizeBtn').addEventListener('click', async () => {
     });
 
     const numDays = days.length;
-    const result = { days, totalDistanceM: 0, totalDurationS: 0, routeSource: 'custom' };
+    const result = { days, totalDistanceM, totalDurationS, routeSource: 'custom' };
     lastItinerary = result;
-    document.getElementById('mapStatDistance').textContent = `${trip.places.length} stops · ${numDays} day${numDays > 1 ? 's' : ''}`;
-    document.getElementById('mapStatTime').textContent = `${placesPerDay} places/day`;
+    document.getElementById('mapStatDistance').textContent = `${(totalDistanceM/1000).toFixed(1)} km total`;
+    document.getElementById('mapStatTime').textContent = `${Math.round(totalDurationS/60)} min travel`;
     redrawMarkers();
-    const profile = trip.transport_mode === 'walking' ? 'foot' : 'driving';
-    const geom = await osrmRouteGeometry([{ lat: base.lat, lng: base.lng }, ...trip.places.map(p => ({ lat: p.lat, lng: p.lng }))], profile);
+    const geom = await osrmRouteGeometry(allPoints, profile);
     drawRouteLine(geom);
     renderItinerary(result, base);
     statusEl.textContent = `✅ Trip planned — ${trip.places.length} stops across ${numDays} day${numDays > 1 ? 's' : ''}.`;
@@ -734,7 +752,7 @@ async function moveStop(placeId, destDayIdx, destStopIdx, result, base) {
     });
   } catch(e) { console.warn('Reorder save failed:', e.message); }
 
-  // Rebuild and re-render itinerary
+  // Rebuild and re-render itinerary (leg times cleared until re-planned)
   const days = [];
   let dayNum = 1, stops = [];
   trip.places.forEach((p, i) => {
@@ -747,6 +765,7 @@ async function moveStop(placeId, destDayIdx, destStopIdx, result, base) {
   const newResult = { days, totalDistanceM: 0, totalDurationS: 0, routeSource: 'custom' };
   lastItinerary = newResult;
   document.getElementById('mapStatDistance').textContent = `${trip.places.length} stops · ${days.length} day${days.length > 1 ? 's' : ''}`;
+  document.getElementById('mapStatTime').textContent = `Click "Plan My Trip" to update times`;
   redrawMarkers();
   renderItinerary(newResult, base);
 }
