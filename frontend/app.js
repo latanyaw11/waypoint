@@ -273,6 +273,26 @@ document.querySelectorAll('.tab').forEach(btn => {
   });
 });
 
+// ---------------- day helpers ----------------
+function tripDuration() {
+  if (trip && trip.start_date && trip.end_date) {
+    const start = new Date(trip.start_date);
+    const end = new Date(trip.end_date);
+    const days = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
+    return Math.max(days, 1);
+  }
+  return 7;
+}
+
+function buildDayOptions(selectedDay) {
+  const n = tripDuration();
+  let html = '';
+  for (let d = 1; d <= n; d++) {
+    html += '<option value="' + d + '"' + (selectedDay === d ? ' selected' : '') + '>Day ' + d + '</option>';
+  }
+  return html;
+}
+
 // ---------------- autocomplete ----------------
 let acDebounceTimer = null;
 
