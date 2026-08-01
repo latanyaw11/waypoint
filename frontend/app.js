@@ -771,7 +771,7 @@ function renderItinerary(result, base) {
         <div class="stop-header">
           <div class="meta">${catTagHtml(stop.category)} <span>${stop.visit_duration_min||stop.visitDurationMin||60} min visit</span></div>
           <button class="visit-btn ${visited ? 'done' : ''}" data-visit="${stop.id}" title="${visited ? 'Mark unvisited' : 'Mark as visited'}">${visited ? '✅ Visited' : '○ Mark visited'}</button>
-          ${!visited ? `<button class="move-day-btn" data-moveid="${stop.id}" data-day="${day.day}">⏭ Next day</button>` : ''}
+
         </div>
         <h4>${escapeHtml(stop.name)}</h4>
         <div class="hint">${escapeHtml(stop.address||'')}</div>
@@ -833,54 +833,6 @@ function renderItinerary(result, base) {
       const sid = btn.dataset.visit;
       if (visitedStops.has(sid)) { visitedStops.delete(sid); } else { visitedStops.add(sid); }
       renderItinerary(lastItinerary, base);
-    });
-  });
-
-  // Move to next day handlers
-  document.querySelectorAll('.move-day-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const placeId = btn.dataset.moveid;
-      const currentDay = parseInt(btn.dataset.day);
-
-      // Find current index in trip.places
-      const idx = trip.places.findIndex(p => p.id === placeId);
-      if (idx === -1) return;
-
-      // Calculate pace
-      const paceMap = { relaxed: 3, moderate: 5, packed: 7 };
-      const placesPerDay = paceMap[trip.pace] || 5;
-
-      // Find where next day starts in the flat array
-      const nextDayStartIdx = currentDay * placesPerDay;
-
-      // Remove from current position and insert at start of next day
-      const [moved] = trip.places.splice(idx, 1);
-      const insertAt = Math.min(nextDayStartIdx, trip.places.length);
-      trip.places.splice(insertAt, 0, moved);
-
-      // Save new order to backend
-      api(`/api/trips/${trip.id}/places/reorder`, {
-        method: 'POST',
-        body: { order: trip.places.map((p, i) => ({ id: p.id, position: i + 1 })) }
-      }).catch(e => console.warn('Could not save order:', e.message));
-
-      // Rebuild itinerary with new order
-      const paceMap2 = { relaxed: 3, moderate: 5, packed: 7 };
-      const ppd = paceMap2[trip.pace] || 5;
-      const days = [];
-      let dayNum = 1, stops = [];
-      trip.places.forEach((p, i) => {
-        stops.push({ ...p, legDistanceM: null, legDurationS: null });
-        if (stops.length >= ppd || i === trip.places.length - 1) {
-          days.push({ day: dayNum++, stops });
-          stops = [];
-        }
-      });
-      lastItinerary = { days, totalDistanceM: 0, totalDurationS: 0, routeSource: 'custom' };
-      const numDays = days.length;
-      document.getElementById('mapStatDistance').textContent = `${trip.places.length} stops · ${numDays} day${numDays > 1 ? 's' : ''}`;
-      redrawMarkers();
-      renderItinerary(lastItinerary, primaryBase());
     });
   });
 
