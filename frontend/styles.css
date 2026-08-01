@@ -260,3 +260,9 @@ textarea{resize:vertical;min-height:50px;}
 /* ---- Itinerary remove button ---- */
 .itn-remove-btn{font-size:11px;padding:3px 8px;border-radius:20px;border:1px solid #FCA5A5;background:none;color:#DC2626;cursor:pointer;white-space:nowrap;transition:all .2s;font-weight:600;}
 .itn-remove-btn:hover{background:#FEE2E2;}
+
+/* ---- Day picker on place cards ---- */
+.day-picker-row{display:flex;align-items:center;gap:8px;margin-top:8px;}
+.day-picker-label{font-size:11px;font-weight:600;color:var(--slate);text-transform:uppercase;letter-spacing:0.04em;}
+.day-picker{padding:4px 8px;border:1px solid var(--line);border-radius:7px;font-size:13px;background:var(--white);color:var(--ink);cursor:pointer;width:80px;}
+.day-picker:focus{outline:none;border-color:var(--sky);}
