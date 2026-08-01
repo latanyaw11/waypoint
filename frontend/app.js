@@ -487,7 +487,7 @@ function renderPlaces() {
       <div class="day-picker-row">
         <span class="day-picker-label">📅 Day</span>
         <select class="day-picker" data-placeid="${p.id}">
-          ${Array.from({length: tripDuration()}, (_, i) => `<option value="${i+1}" ${(p.scheduled_day||1)===(i+1)?'selected':''}>${i+1}</option>`).join('')}
+          ${buildDayOptions(p.scheduled_day||1)}
         </select>
       </div>
       <div class="actions"><button class="iconbtn" data-remove="${p.id}">Remove</button></div>
