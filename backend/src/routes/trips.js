@@ -71,11 +71,16 @@ router.patch('/:tripId', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Set/update the hotel/home base
+// Set/update the hotel/home base — always replaces existing primary base
 router.post('/:tripId/base', async (req, res, next) => {
   try {
     const { name, address, checkIn, checkOut } = req.body;
     const geo = await geocode(address || name);
+
+    // Delete any existing bases for this trip first
+    await supabase.from('bases').delete().eq('trip_id', req.params.tripId);
+
+    // Insert the new base
     const { data, error } = await supabase
       .from('bases')
       .insert({ trip_id: req.params.tripId, name, address: geo.address, lat: geo.lat, lng: geo.lng, check_in: checkIn, check_out: checkOut, is_primary: true })
