@@ -288,7 +288,7 @@ function buildPlaceCard(p, i) {
   var notesHtml = p.notes ? '<div class="hint">' + escapeHtml(p.notes) + '</div>' : '';
   var dayPicker = '<div class="day-picker-row"><span class="day-picker-label">Day</span>'
     + '<select class="day-picker" data-placeid="' + p.id + '">'
-    + buildDayOptions(p.scheduled_day || 1)
+    + (function(sd){ var o=''; for(var d=1;d<=14;d++){ o+='<option value="'+d+'"'+(sd===d?' selected':'')+'>Day '+d+'</option>'; } return o; })(p.scheduled_day||1)
     + '</select></div>';
   return '<div class="placecard" data-idx="' + i + '" data-id="' + p.id + '">'
     + '<div class="num">' + (i+1) + '</div>'
