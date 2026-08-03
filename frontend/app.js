@@ -288,7 +288,7 @@ function buildPlaceCard(p, i) {
   var notesHtml = p.notes ? '<div class="hint">' + escapeHtml(p.notes) + '</div>' : '';
   var dayPicker = '<div class="day-picker-row"><span class="day-picker-label">Day</span>'
     + '<select class="day-picker" data-placeid="' + p.id + '">'
-    + (function(sd){ var o=''; for(var d=1;d<=14;d++){ o+='<option value="'+d+'"'+(sd===d?' selected':'')+'>Day '+d+'</option>'; } return o; })(p.scheduled_day||1)
+    + buildDayOptions(p.scheduled_day || 1)
     + '</select></div>';
   return '<div class="placecard" data-idx="' + i + '" data-id="' + p.id + '">'
     + '<div class="num">' + (i+1) + '</div>'
@@ -417,7 +417,8 @@ document.getElementById('saveSetupBtn').addEventListener('click', async () => {
   if (updated.destination_lat && updated.destination_lng) {
     loadCityPOIs(updated.destination_lat, updated.destination_lng, 3000);
     map.setView([updated.destination_lat, updated.destination_lng], 14);
-  }});
+  }
+});
 
 document.getElementById('deleteTripBtn').addEventListener('click', async () => {
   if (!confirm(`Delete "${trip.name}"? This cannot be undone.`)) return;
@@ -521,14 +522,14 @@ function renderPlaces() {
   for (var i = 0; i < places.length; i++) {
     var p = places[i];
     var notesHtml = p.notes ? '<div class="hint">' + escapeHtml(p.notes) + '</div>' : '';
-    var dayOpts = buildDayOptions(p.scheduled_day || 1);
+    var selDay = p.scheduled_day || 1;
     html += '<div class="placecard" data-idx="' + i + '" data-id="' + p.id + '">'
       + '<div class="num">' + (i+1) + '</div>'
       + '<h4>' + escapeHtml(p.name) + '</h4>'
       + '<div class="meta">' + catTagHtml(p.category) + ' <span>' + fmtMoney(p.estimated_cost_cents) + ' &middot; ' + (p.visit_duration_min||60) + 'min</span></div>'
       + notesHtml
       + '<div class="day-picker-row"><label class="day-picker-label">Day</label>'
-      + '<select class="day-picker" data-placeid="' + p.id + '">' + dayOpts + '</select></div>'
+      + (function(sd){ var o=''; for(var d=1;d<=14;d++){ o+='<option value="'+d+'"'+(sd===d?' selected':'')+'>Day '+d+'<\/option>'; } return '<select class="day-picker" data-placeid="'+p.id+'">' + o + '<\/select><\/div>'; })(selDay)
       + '<div class="actions"><button class="iconbtn" data-remove="' + p.id + '">Remove</button></div>'
       + '</div>';
   }
@@ -836,7 +837,8 @@ async function moveStop(placeId, destDayIdx, destStopIdx, result, base) {
     if (stops.length >= ppd || i === trip.places.length - 1) {
       days.push({ day: dayNum++, stops });
       stops = [];
-    }});
+    }
+  });
   const newResult = { days, totalDistanceM: 0, totalDurationS: 0, routeSource: 'custom' };
   lastItinerary = newResult;
   document.getElementById('mapStatDistance').textContent = `${trip.places.length} stops · ${days.length} day${days.length > 1 ? 's' : ''}`;
